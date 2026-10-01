@@ -19,12 +19,12 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git log:*)",
-      "Bash(ssh:*)"
+      "Bash(ssh:*)",
+      "Bash(git push:*)"
     ],
     "ask": [
       "Bash(multipass delete:*)",
       "Bash(multipass purge:*)",
-      "Bash(git push:*)",
       "Bash(git reset:*)",
       "Bash(git rebase:*)",
       "Bash(curl:*)",
@@ -37,7 +37,9 @@
     "deny": [
       "Read(./.lab/keys/**)",
       "Bash(git push --force:*)",
-      "Bash(rm -rf /:*)"
+      "Bash(rm -rf /:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease:*)"
     ]
   }
 }
