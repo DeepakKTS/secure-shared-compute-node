@@ -133,6 +133,7 @@ def test_claude_permissions_guard_destructive_actions() -> None:
         "Read(./.lab/keys/**)",
     ):
         assert rule in perms["deny"], f"{rule} must be denied"
+    assert "Bash(ssh:*)" not in perms["allow"], "ssh to any host breaks rule 1 (lab only)"
     for rule in (
         "Bash(make lab-down:*)",
         "Bash(multipass delete:*)",
