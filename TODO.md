@@ -2,7 +2,7 @@
 
 Work top to bottom. Check a box only when its feature's acceptance check in `docs/FEATURES.md` passes. Put the verification command in the commit body.
 
-Current phase: **1**
+Current phase: **2**
 
 Milestone A = every item not marked (Milestone B). See `docs/PLAN.md`.
 
@@ -20,7 +20,7 @@ Milestone A = every item not marked (Milestone B). See `docs/PLAN.md`.
 ## Phase 1: Baseline
 - [x] P1.1 playbooks/audit.yml with pinned Lynis (F-10)
 - [x] P1.2 scripts/parse_lynis.py + unit test (F-11)
-- [ ] Exit: `make baseline` writes results/lynis-before.json
+- [x] Exit: `make baseline` writes results/lynis-before.json
 
 ## Phase 2: Hardening
 - [x] P2.0 `scripts/lab.sh snapshot pre-harden`

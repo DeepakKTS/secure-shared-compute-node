@@ -1,0 +1,10 @@
+{
+  "git_sha": "016004d8e96c8bde1cf20864a35eb8a665d3f728",
+  "hardening_index": 61,
+  "host": "ssc-node",
+  "label": "before",
+  "lynis_version": "3.1.7",
+  "suggestions": 40,
+  "timestamp": "2026-10-01T07:25:59Z",
+  "warnings": 3
+}
