@@ -79,6 +79,9 @@ Milestone A = every item not marked (Milestone B). See `docs/PLAN.md`.
 - [ ] Exit: `make simulate` passes S1 to S4 (Milestone B: all six)
 
 ## Phase 7: Evidence
+- [ ] P7.0a Stronger hardened-node guard for a "before" audit: harden.yml first writes `/etc/ssc/build-info` (git sha, time); audit.yml checks it and the SSH drop-in with `become: true` and literal paths (no override variable); a policy test ties the ssh_hardening template `dest` to the guarded path (Phase 1 review item 1)
+- [ ] P7.0b Lynis reads only its own profile: add `--usecwd`, fail if `/etc/lynis`, `/usr/local/etc/lynis` or `/usr/local/lynis` exist, and fail unless every profile line in the Lynis log is under the pinned install (Phase 1 review item 2)
+- [ ] P7.0c Leave Lynis self-update findings (test ID `LYNIS`) out of the warning and suggestion counts, say so in docs/EVIDENCE.md, and consider `skip-upgrade-test=yes` to stop the outbound DNS query (Phase 1 review item 4)
 - [ ] P7.1 make audit -> results/lynis-after.json
 - [ ] P7.2 scripts/report.py + README markers (F-71, F-72)
 - [ ] Exit: README matches JSON; rerun produces no diff
