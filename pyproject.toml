@@ -26,6 +26,11 @@ dev = [
 [tool.uv]
 # This repo is not a Python package; uv only manages the environment.
 package = false
+# Same uv and the same uv-managed CPython build (.python-version) locally and
+# in CI. A system Python can differ in patch level, and ipaddress behavior
+# changed within 3.12 (3.12.4).
+required-version = "==0.11.29"
+python-preference = "only-managed"
 
 [tool.ruff]
 target-version = "py312"
