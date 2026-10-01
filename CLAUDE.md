@@ -139,7 +139,7 @@ A `LAB_PROFILE=small` option collapses monitor onto node for low-RAM laptops. Do
 |---|---|---|
 | `make deps` | Install Python and Ansible deps into `.venv/` with uv | versions installed |
 | `make lab-up` | Create 3 VMs, inject admin key, write inventory, run `lab_check.yml` | `inventory/lab.yml`, `.lab/ssh_config` |
-| `make lab-down` | Delete the lab VMs only. A person types `yes` on the terminal (read from `/dev/tty`); no flag or variable skips it, so it cannot run unattended | |
+| `make lab-down` | Delete the lab VMs only. Needs a typed `yes` read from `/dev/tty`; no flag or variable skips it. A program driving a pseudo-terminal can still type it, so for agents the control is the Claude Code ask list | |
 | `make lab-status` | Show lab VMs and inventory state | |
 | `make ping` | `ansible all -m ansible.builtin.ping` | pass/fail |
 | `make test` | Unit tests that need no VMs | pytest report |
