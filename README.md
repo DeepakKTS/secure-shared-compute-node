@@ -1,6 +1,6 @@
 # Secure Shared Compute Node
 
-**Status:** design and threat model are complete. Phase 0 (lab tooling) build is in progress.
+**Status:** Phases 0 and 1 (lab tooling, baseline audit) are done. Phase 2 hardening is done through P2.7: base settings, users, SSH, firewall, fail2ban, automatic security updates and `/tmp` hardening, each verified on the lab VMs and again after a reboot. P2.8 (auditd) is in progress.
 
 A hardened, monitored, multi-user Linux compute server, built with Ansible and tested against simulated crypto-miner and intrusion attacks.
 
