@@ -1,0 +1,17 @@
+#cloud-config
+# Rendered by scripts/lab.sh into .lab/cloud-init.yaml (gitignored).
+# Keep this minimal. The baseline Lynis audit (Phase 1) should see a
+# default Ubuntu server, so hardening belongs in Ansible, not here.
+users:
+  # Keep the default user. Multipass logs in as `ubuntu` with its own key
+  # for `multipass exec` and `multipass shell`.
+  - default
+  - name: @@ADMIN_USER@@
+    gecos: SSC lab admin
+    groups: [sudo]
+    shell: /bin/bash
+    lock_passwd: true
+    # Ansible needs passwordless sudo for this account.
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    ssh_authorized_keys:
+      - @@ADMIN_PUBKEY@@
