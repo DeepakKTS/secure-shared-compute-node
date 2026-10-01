@@ -15,3 +15,6 @@
     - role: users
       become: true
       tags: [users]
+    - role: ssh_hardening
+      become: true
+      tags: [ssh_hardening]

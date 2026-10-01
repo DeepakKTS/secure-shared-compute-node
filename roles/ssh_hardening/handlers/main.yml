@@ -1,0 +1,7 @@
+---
+# sshd is socket-activated on Ubuntu 24.04: ssh.socket owns port 22 and
+# starts ssh.service, which takes the reload. Existing sessions stay open.
+- name: Reload ssh
+  ansible.builtin.systemd_service:
+    name: ssh
+    state: reloaded

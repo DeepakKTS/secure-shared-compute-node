@@ -1,0 +1,28 @@
+---
+# Validated on its own first, so a typo never reaches sshd_config.d.
+- name: Write the sshd hardening drop-in
+  ansible.builtin.template:
+    src: 00-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/00-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload ssh
+
+# Then the whole configuration the drop-in is now part of. If this fails the
+# play stops before the reload, and the running sshd keeps its old settings.
+- name: Test the full sshd configuration
+  ansible.builtin.command: /usr/sbin/sshd -t
+  changed_when: false
+
+- name: Reload sshd now, so the check below uses the new settings
+  ansible.builtin.meta: flush_handlers
+
+# ControlPersist would reuse the connection opened before the change, which
+# proves nothing (CLAUDE.md rule 4). Log in again.
+- name: Use a new SSH connection for the check
+  ansible.builtin.meta: reset_connection
+
+- name: Confirm a new admin connection works with the new settings
+  ansible.builtin.ping:

@@ -1,0 +1,19 @@
+---
+# Groups allowed to log in. sudo holds the admin and ubuntu: `multipass exec`
+# logs in as ubuntu, and it is the repair path (CLAUDE.md rule 4). The
+# research group holds the research users.
+ssh_hardening_allow_groups:
+  - sudo
+  - "{{ users_research_group }}"
+
+# Three key or password tries per connection, then the connection drops.
+# The inventory and .lab/ssh_config set IdentitiesOnly, so a busy ssh-agent
+# does not use up the tries before the right key.
+ssh_hardening_max_auth_tries: 3
+
+# Seconds an unauthenticated connection may stay open. Short, so a flood of
+# half-open logins cannot hold every connection slot.
+ssh_hardening_login_grace_time: 30
+
+# Ask a silent client every 5 minutes, and drop it after 3 missed answers.
+ssh_hardening_client_alive_interval: 300

@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  author: Deepak Kumaran T S
+  description: Key-only sshd with AllowGroups, validated drop-in
+  license: MIT
+  min_ansible_version: "2.21"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+dependencies: []

@@ -1,0 +1,25 @@
+# Managed by Ansible (role: ssh_hardening). Do not edit by hand.
+# sshd keeps the first value it reads for most options, and this file sorts
+# before the cloud image's drop-ins, so these settings win. The reasons are
+# in roles/ssh_hardening/README.md.
+
+# Keys only: no passwords to guess, phish or reuse.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+
+# No direct root login; admins log in as themselves and use sudo.
+PermitRootLogin no
+
+# Only these groups may log in, so a stray system or service account cannot.
+AllowGroups {{ ssh_hardening_allow_groups | join(' ') }}
+
+MaxAuthTries {{ ssh_hardening_max_auth_tries }}
+LoginGraceTime {{ ssh_hardening_login_grace_time }}
+
+# No X11 or agent forwarding: either one lets a root user on this server use
+# the connecting user's display or SSH keys.
+X11Forwarding no
+AllowAgentForwarding no
+
+ClientAliveInterval {{ ssh_hardening_client_alive_interval }}
