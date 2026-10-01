@@ -170,16 +170,24 @@ check_disk() {
         need=$((need + n))
     done
     need="${LAB_MIN_FREE_GB:-$need}"
+    case "$need" in
+        '' | *[!0-9]*) die "LAB_MIN_FREE_GB must be a whole number of gigabytes, like 20; got '$need'" ;;
+    esac
     path="$HOME"
     if [ "$HOST_OS" = Linux ] && [ -d /var/snap/multipass ]; then
         path=/var/snap/multipass
     fi
     avail_kb="$(df -Pk "$path" | awk 'NR == 2 {print $4}')"
+    case "$avail_kb" in
+        '' | *[!0-9]*) die "could not read free disk at $path from df (got '$avail_kb')" ;;
+    esac
     avail_gb=$((avail_kb / 1024 / 1024))
     info "free disk at $path: ${avail_gb}G; the new VM disks can grow to ${need}G"
-    if [ "$avail_gb" -lt "$need" ]; then
-        die "not enough free disk (${avail_gb}G free, ${need}G needed). Free space, or set LAB_MIN_FREE_GB to override."
+    # Fail closed: if the test itself errors (a number too large), refuse.
+    if [ "$avail_gb" -ge "$need" ]; then
+        return 0
     fi
+    die "not enough free disk (${avail_gb}G free, ${need}G needed). Free space, or set LAB_MIN_FREE_GB to override."
 }
 
 forget_host_key() {

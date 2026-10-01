@@ -229,6 +229,25 @@ def test_up_refuses_when_disk_is_short(lab: Lab) -> None:
     assert launches(lab) == []
 
 
+@pytest.mark.parametrize("value", ["abc", "-1", "1.5", "20G", " 5", "99999999999999999999"])
+def test_bad_min_free_override_fails_closed(lab: Lab, value: str) -> None:
+    result = lab.run("up", LAB_MIN_FREE_GB=value)
+    assert result.returncode != 0
+    assert launches(lab) == [], f"LAB_MIN_FREE_GB={value!r} must not launch VMs"
+
+
+def test_min_free_override_can_lower_the_need(lab: Lab) -> None:
+    assert lab.run("up", FAKE_DF_KB=str(10 * GIB_KB), LAB_MIN_FREE_GB="8").returncode == 0
+    assert len(launches(lab)) == 3
+
+
+def test_unreadable_df_output_fails_closed(lab: Lab) -> None:
+    result = lab.run("up", FAKE_DF_KB="n/a")
+    assert result.returncode != 0
+    assert "could not read free disk" in result.stderr
+    assert launches(lab) == []
+
+
 def test_disk_check_counts_only_new_vms(lab: Lab) -> None:
     lab.set_vms({"ssc-node": "Running", "ssc-monitor": "Running"})
     # Only the attacker (5G) is new; 6G free is enough.
