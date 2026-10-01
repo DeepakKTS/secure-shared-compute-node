@@ -235,9 +235,12 @@ cmd_up() {
     info "lab VMs ready ($LAB_PROFILE profile): $vms"
 }
 
-# Deleting the lab needs a person at a terminal. The answer is read from
-# /dev/tty, not stdin, so a pipe, a script, or an agent without a terminal
-# cannot supply it. No flag or variable skips the prompt (CONFIRM is ignored).
+# Deleting the lab needs a typed yes on a terminal. The answer is read from
+# /dev/tty, not stdin, so a pipe or redirected input cannot supply it, and no
+# flag or variable skips the prompt (CONFIRM is ignored). This stops scripts
+# and mistakes, not a determined program: anything that drives a
+# pseudo-terminal can still type yes. For agents, the control is the Claude
+# Code ask list.
 confirm_delete() {
     local answer=""
     if [ -n "${CONFIRM:-}" ]; then
@@ -337,36 +340,51 @@ valid_snapshot_name() {
     return 0
 }
 
-# Prints the snapshot names of one VM, one per line.
-vm_snapshots() {
-    multipass list --snapshots --format json | "$PY" -c '
+# Prints "vm snapshot" for every snapshot on the host. A listing that fails
+# or reports errors stops the script: it must never read as "no snapshots".
+snapshot_table() {
+    local listing
+    listing="$(multipass list --snapshots --format json)" || return 1
+    printf '%s' "$listing" | "$PY" -c '
 import json, sys
-for name in json.load(sys.stdin).get("info", {}).get(sys.argv[1], {}):
-    print(name)
-' "$1"
+data = json.load(sys.stdin)
+if data.get("errors") or not isinstance(data.get("info"), dict):
+    sys.exit(1)
+for vm, snapshots in data["info"].items():
+    for name in snapshots:
+        print(vm, name)
+'
 }
 
-# VMs that cmd_snapshot stopped and has not started again yet.
+# What cmd_snapshot has done so far, for the cleanup on failure.
+SNAPSHOT_NAME=""
 SNAPSHOT_STOPPED=""
+SNAPSHOT_TAKEN=""
 
-restart_stopped() {
+snapshot_cleanup() {
     local vm
     for vm in $SNAPSHOT_STOPPED; do
         echo "lab.sh: snapshot failed; starting $vm again" >&2
         multipass start "$vm" || echo "lab.sh: could not start $vm. Run 'multipass start $vm'." >&2
     done
+    if [ -n "$SNAPSHOT_TAKEN" ]; then
+        echo "lab.sh: the set is incomplete. Snapshot '$SNAPSHOT_NAME' exists only on:$SNAPSHOT_TAKEN." >&2
+        echo "lab.sh: use another name, or delete those snapshots first (multipass delete --purge <vm>.$SNAPSHOT_NAME; ask first)." >&2
+    fi
 }
 
-# The snapshot is the real rollback (CLAUDE.md rule 4), so it is all or
-# nothing: every lab VM must exist and be free of the name before any VM is
-# stopped, and a failure part way starts the stopped VMs again.
+# The snapshot is the real rollback (CLAUDE.md rule 4). Everything is checked
+# before any VM is stopped: every lab VM exists, the snapshot listing works,
+# and no VM has the name yet. If a step fails part way, stopped VMs are
+# started again and the script says which VMs already got the snapshot.
 cmd_snapshot() {
-    local name="${1:-}" vms vm state
+    local name="${1:-}" vms vm state snapshots
     valid_snapshot_name "$name" || die "usage: lab.sh snapshot <name> (letters, digits, hyphens; starts with a letter)"
     check_host
     require_venv
     require_multipass
     vms="$(lab_vms)"
+    snapshots="$(snapshot_table)" || die "could not list snapshots ('multipass list --snapshots' failed or reported errors). Nothing was stopped."
     for vm in $vms; do
         state="$(vm_state "$vm")"
         case "$state" in
@@ -374,11 +392,12 @@ cmd_snapshot() {
             "") die "$vm does not exist. A snapshot of part of the lab is no rollback; run 'make lab-up' first." ;;
             *) die "$vm is in state '$state'; a snapshot needs it Running or Stopped" ;;
         esac
-        if vm_snapshots "$vm" | grep -qxF "$name"; then
+        if echo "$snapshots" | awk -v v="$vm" -v n="$name" '$1 == v && $2 == n {f = 1} END {exit !f}'; then
             die "$vm already has a snapshot named '$name'. Nothing was stopped. Pick another name."
         fi
     done
-    trap restart_stopped EXIT
+    SNAPSHOT_NAME="$name"
+    trap snapshot_cleanup EXIT
     for vm in $vms; do
         state="$(vm_state "$vm")"
         if [ "$state" = Running ]; then
@@ -388,6 +407,7 @@ cmd_snapshot() {
         fi
         info "taking snapshot $vm.$name"
         multipass snapshot --name "$name" "$vm"
+        SNAPSHOT_TAKEN="$SNAPSHOT_TAKEN $vm"
         if [ "$state" = Running ]; then
             multipass start "$vm"
             SNAPSHOT_STOPPED="${SNAPSHOT_STOPPED% "$vm"}"

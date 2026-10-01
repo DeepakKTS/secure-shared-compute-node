@@ -41,7 +41,11 @@ def save():
         json.dump(vms, f)
 
 if cmd == "list" and "--snapshots" in args:
-    print(json.dumps({{"errors": [], "info": {{
+    # FAKE_MP_SNAPSHOT_LIST: "fail" exits 1, "errors" reports an error.
+    mode = os.environ.get("FAKE_MP_SNAPSHOT_LIST", "")
+    if mode == "fail":
+        sys.exit("fake multipass: cannot list snapshots")
+    print(json.dumps({{"errors": ["boom"] if mode == "errors" else [], "info": {{
         n: {{s: {{"parent": "", "comment": ""}} for s in v.get("snapshots", [])}}
         for n, v in vms.items() if v.get("snapshots")
     }}}}))
@@ -440,10 +444,20 @@ def test_snapshot_refuses_a_name_collision_before_stopping_anything(lab: Lab) ->
     assert actions(lab) == []
 
 
+@pytest.mark.parametrize("mode", ["fail", "errors"])
+def test_snapshot_listing_failure_stops_before_anything(lab: Lab, mode: str) -> None:
+    lab.set_vms({"ssc-node": "Running", "ssc-monitor": "Running", "ssc-attacker": "Running"})
+    result = lab.run("snapshot", "pre-harden", FAKE_MP_SNAPSHOT_LIST=mode)
+    assert result.returncode != 0
+    assert "could not list snapshots" in result.stderr
+    assert actions(lab) == [], "a failed listing must never read as 'no snapshots'"
+
+
 def test_snapshot_failure_starts_the_stopped_vm_again(lab: Lab) -> None:
     lab.set_vms({"ssc-node": "Running", "ssc-monitor": "Running", "ssc-attacker": "Running"})
     result = lab.run("snapshot", "pre-harden", FAKE_MP_SNAPSHOT_FAIL="ssc-monitor")
     assert result.returncode != 0
+    assert "Snapshot 'pre-harden' exists only on: ssc-node." in result.stderr
     assert actions(lab) == [
         "stop ssc-node",
         "snapshot --name pre-harden ssc-node",
