@@ -1,16 +1,22 @@
 # Progress
 
-## HANDOFF (2026-10-01, after P2.7, commit 0707d93)
+## HANDOFF (2026-10-01, after P2.7 and the safety work, commit 16af84f)
 
-Written because the session context got long (loop rule). Start the next session here: read CLAUDE.md, docs/AUTONOMY.md, this section, then TODO.md.
+Written at the owner's request; the session stopped here. Start the next session here: read CLAUDE.md, docs/AUTONOMY.md, this section, then TODO.md. A session now does at most 3 TODO tasks (docs/AUTONOMY.md, "Session length"): P2.8 to P2.10 fit one session; P2.11 and the phase end, the next.
 
-- **State:** current phase 2. Done: P2.0 to P2.7 (base, users, ssh_hardening, firewall ingress, fail2ban, auto_updates, tmp_hardening). CI green on 0707d93. Next: P2.8 auditd, P2.9 make idempotency, P2.10 monitor, P2.11 make verify, then the phase end (`/verify-phase`, security-reviewer, README status line).
+- **State:** current phase 2. Done: P2.0 to P2.7 (base, users, ssh_hardening, firewall ingress, fail2ban, auto_updates, tmp_hardening). CI green on 0707d93 for the last role. Five more commits since then (1f26290, 351ea8b, 4d08470, c6439f2, 16af84f): safety and docs, each pushed with lint and tests passing. Next: P2.8 auditd, P2.9 make idempotency, P2.10 monitor, P2.11 make verify, then the phase end (`/verify-phase`, security-reviewer, README status line).
 - **Lab:** ssc-node 192.168.252.2, ssc-monitor .3, ssc-attacker .4, controller .1 on bridge102 (lab_cidr 192.168.252.0/24). Snapshots on all 3 VMs: pre-harden, pre-users, pre-ssh, pre-firewall, pre-fail2ban, pre-tmp. Restoring one needs the user's confirmation. The node now has a 512M tmpfs `/tmp` and `/dev/shm`, both `nosuid,nodev,noexec`. The node's pending security updates were installed in P2.7. `/home/ssc-admin/uu-run.log` on the node is that run's output, kept as evidence.
-- **Guardrails added in this session (docs/AUTONOMY.md):**
-  - A PreToolUse hook (`.claude/hooks/guard_delete.py`) blocks any Bash command that contains a delete word (`rm`, `unlink`, find's `-delete`), unless each one is a plain command whose targets are all in `.lab/` (not `.lab/keys`) or build output. It fails closed.
-  - Because of the hook, write commit messages that mention those words to a file and use `git commit -F`. `git rm` blocks too.
-  - Cleanup on a VM goes through a fixed script or an Ansible task, never `ssh ... rm`. No such script exists yet; write one when it is needed.
-  - Scratch experiments work on a copy of a config file, or on a VM right after a snapshot. Never chain a delete.
+- **Guardrails (docs/AUTONOMY.md, enforced by hooks in `.claude/settings.json`):**
+  - **The guard hook** (`.claude/hooks/guard_delete.py`, PreToolUse, fails closed) covers these commands: `rm`, `unlink`, `shred`, `truncate`, find's `-delete`, `git clean`, `rsync` with a delete option, and `mv` onto `/dev/null`. Each must be a plain command whose targets are all in `.lab/` (not `.lab` itself or `.lab/keys`) or build output.
+  - **What it always blocks:** deletes written as code (`os.remove`, `shutil.rmtree`, `.unlink()`, `rmtree`). Also any `>` redirect into `.lab/keys` or onto a tracked file.
+  - **Text mentions block too:** a delete word anywhere in the command text blocks unless it is such a plain command. That includes quotes, `ssh '...'`, `bash -c`, `sudo` and comments.
+    - Write commit messages to a file and use `git commit -F`.
+    - `git rm` blocks.
+    - So does a `grep` or `ssh` command whose text names one of those commands or syscalls (for auditd, rules on the `unlink` syscall). Put such checks in a testinfra test or a file, not in an ad-hoc command.
+  - **The audit log:** every Bash call is logged to `.lab/audit/bash.log`, and blocks get their own lines. `make audit-log` shows today's blocked attempts; `ALL=1` also lists what ran.
+  - **Bash calls:** one purpose per call. No trailing cleanup. No `2>/dev/null` unless needed, with the reason in the description.
+  - **Temp work on a VM** goes through a fixed script in the repo that runs on the VM (`mktemp -d` and a `trap` there). Cleanup goes through that script or an Ansible task, never `ssh ... rm`. No such script exists yet; write one when it is first needed.
+  - **Scratch experiments** work on a copy of a config file, or on a VM right after a snapshot.
 - **Procedure for every SSH, firewall, PAM, sudoers or fail2ban task** (it worked for P2.2 to P2.5):
   1. `scripts/lab.sh snapshot pre-<task>`.
   2. Render and check the config on the VM first where possible (`nft -c`, `sshd -t`), and run the new tests against the unprotected host to see them fail.
@@ -23,12 +29,13 @@ Written because the session context got long (loop rule). Start the next session
   - Tag every rule `-k ssc_<purpose>`.
   - Never `-e 2` (it makes rule changes need a reboot). Keep failure mode `-f 1`; `-f 2` panics the kernel on audit failure.
   - Render per-user watches (`~/.config/systemd`, shell rc files) from `users_research`, and create the directories first: auditd does not expand `~`, and a watch needs its parent to exist.
-  - `/tmp` and `/dev/shm` are noexec now, so an exec there fails with EACCES. The exec rules must record failed attempts too (no `success=1` filter), and S2 will look for those records.
+  - Log failed exec attempts on the noexec `/tmp` and `/dev/shm`. An exec there now fails with EACCES, and that failed attempt is the evidence S2 needs. So the execve rules for temp paths (`/tmp`, `/dev/shm`, `/var/tmp`) must not filter on `success=1`, and they need their own key (for example `-k ssc_exec_tmp`). A testinfra test should run a binary from `/tmp` as alice, see it refused, and find the failed record with `ausearch -k ssc_exec_tmp --success no`.
   - Take a snapshot anyway; it is cheap.
-- **Decisions this session:** F-24's "S1 passes" part moved to P6.4 (user approved). F-26's "S2 passes" part moved to P6.5 the same way (tell the user at the next report). The guard hook keeps `.lab` itself and `.lab/keys` blocked, which is stricter than the request.
+- **Decisions this session:** F-24's "S1 passes" part moved to P6.4, and F-26's "S2 passes" part to P6.5 (both approved). c55d7f1 stays as it is (approved, no history rewrite). The guard hook keeps `.lab` itself and `.lab/keys` blocked, which is stricter than the request.
 - **Known issues:**
   - `git push` sometimes waits on a macOS keychain prompt (`git credential-osxkeychain get`). The user unlocks it; `gh auth setup-git` would avoid it (the user's decision).
-  - c55d7f1 also added `tests/test_tmp_hardening.py` in full, although its message calls that change a format fix. It was left as is rather than rewriting history.
+  - c55d7f1 also added `tests/test_tmp_hardening.py` in full, although its message calls that change a format fix. Left as is (owner's decision).
+  - The hooks run under the host's `python3` (miniconda 3.13 here; the hook tests also pass with `/usr/bin/python3` 3.9.6). If `python3` disappears from PATH, the guard blocks every Bash call (fail closed); fix PATH or the settings entry with the Edit tool.
 - **Open review items, not yet done:** P7.0a to P7.0c (TODO). From the second Phase 0 review: `gen_inventory.py --multipass-json` is accepted on the production path (item 4); `lab.sh forget_host_key` still uses `ipv4[0]`; on a Linux host with multipass in /usr/bin the lab.sh tests could reach the real binary.
 
 One line per task: date, task ID, commit, what was verified. "built, not verified" means the box stays unticked.
