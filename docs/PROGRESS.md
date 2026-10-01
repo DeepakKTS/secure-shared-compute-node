@@ -1,5 +1,22 @@
 # Progress
 
+## HANDOFF (2026-10-01, after P2.4, commit 635ea71)
+
+Written because the session context got long (loop rule). Start the next session here.
+
+- **State:** current phase 2. Done: P2.0 to P2.4 (base, users, ssh_hardening, firewall ingress). CI green on 635ea71. Next: P2.5 fail2ban, then P2.6 auto_updates, P2.7 tmp_hardening, P2.8 auditd, P2.9 make idempotency, P2.10 monitor, P2.11 make verify.
+- **Lab:** ssc-node 192.168.252.2, ssc-monitor .3, ssc-attacker .4, controller .1 on bridge102 (lab_cidr 192.168.252.0/24). Snapshots on all 3 VMs: pre-harden, pre-users, pre-ssh, pre-firewall. Restoring one needs the user's confirmation.
+- **Procedure for every SSH, firewall, PAM or sudoers task** (it worked for P2.2 to P2.4):
+  1. `scripts/lab.sh snapshot pre-<task>`.
+  2. Render and check the config on the VM first where possible (`nft -c`, `sshd -t`), and run the new tests against the unprotected host to see them fail.
+  3. Open background SSH masters as a repair path: `ssh -F .lab/ssh_config -o ControlMaster=yes -o ControlPath=$PWD/.lab/cm-%n -o ControlPersist=60m -fN <vm>`. For firewall changes also arm a dead-man timer (`systemd-run --unit=ssc-fw-deadman --on-active=15min ...`) and cancel it after new logins work.
+  4. `make harden TAGS=<role>`; stop at once if any host is unreachable, and tell the user before restoring.
+  5. New admin login (`-o ControlPath=none`), `scripts/lab.sh check`, alice key login; rerun for changed=0; `pytest -m lab tests/test_<role>.py` with `PATH=.venv/bin:$PATH`.
+  6. `make reboot HOSTS=node:monitor`, then rerun all lab suites and `lab.sh check` (boot-time units have undone settings twice).
+- **P2.5 notes:** keep `lab_controller_ip` and the monitor in `ignoreip` but not the attacker (S1 needs it bannable). `tests/test_ssh_hardening.py` makes refused logins from the attacker; fail2ban counts "Connection closed by authenticating user" lines, so those tests can get the attacker banned. Plan the test order or unban in teardown. The bans must live in fail2ban's own nftables table; the firewall only reloads its own table, so bans survive.
+- **Known issue:** `git push` sometimes waits on a macOS keychain prompt (`git credential-osxkeychain get`). The user unlocks it; `gh auth setup-git` would avoid it (the user's decision).
+- **Open review items, not yet done:** P7.0a to P7.0c (TODO). From the second Phase 0 review: `gen_inventory.py --multipass-json` is accepted on the production path (item 4); `lab.sh forget_host_key` still uses `ipv4[0]`; on a Linux host with multipass in /usr/bin the lab.sh tests could reach the real binary.
+
 One line per task: date, task ID, commit, what was verified. "built, not verified" means the box stays unticked.
 
 - 2026-10-01 P0.1 b51ff14 `make help` matches the CLAUDE.md section 7 targets; later-phase stubs exit non-zero with their phase; `make lint`/`make test` refuse without `.venv/`; `make -n all` runs in order (GNU make 3.81)
