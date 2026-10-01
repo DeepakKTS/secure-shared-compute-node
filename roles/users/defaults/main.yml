@@ -1,0 +1,29 @@
+---
+# The admin account Ansible logs in as (set in inventory/group_vars/all.yml).
+users_admin: "{{ admin_user }}"
+
+# Research users: a list of {name, ssh_public_key}. Empty unless set, so a
+# host gets no research accounts by accident. The lab sets them for the node
+# in inventory/group_vars/node.yml and none for the monitor.
+users_research: []
+
+# Every research user is in this group, and sshd's AllowGroups lists it.
+users_research_group: ssc-users
+
+users_research_shell: /bin/bash
+
+# Ubuntu's default HOME_MODE is 0750; 0700 keeps one user out of another's files.
+users_home_mode: "0700"
+
+# Lab only: make an SSH key pair on the controller (.lab/keys/<name>_ed25519)
+# for each research user without ssh_public_key. On DASH, set this to false
+# and give each user's own public key.
+users_generate_lab_keys: false
+users_lab_key_dir: "{{ playbook_dir }}/../.lab/keys"
+
+# Accounts with passwordless sudo, written to the file cloud-init created.
+# ubuntu stays: `multipass exec` logs in as ubuntu, and it is the repair
+# path when the admin account breaks (CLAUDE.md rule 4).
+users_sudo_nopasswd:
+  - "{{ users_admin }}"
+  - ubuntu

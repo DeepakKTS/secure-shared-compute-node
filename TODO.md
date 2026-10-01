@@ -24,8 +24,8 @@ Milestone A = every item not marked (Milestone B). See `docs/PLAN.md`.
 
 ## Phase 2: Hardening
 - [x] P2.0 `scripts/lab.sh snapshot pre-harden`
-- [x] P2.1 role base, all hosts (F-20)
-- [ ] P2.2 role users (F-21)
+- [ ] P2.1 role base, all hosts (F-20) (reopened: after a reboot apport sets fs.suid_dumpable back to 2; fix waits for the user, see docs/PROGRESS.md)
+- [x] P2.2 role users (F-21)
 - [ ] P2.3 role ssh_hardening (F-22)
 - [ ] P2.4 role firewall, ingress only for now (F-23)
 - [ ] P2.5 role fail2ban (F-24)

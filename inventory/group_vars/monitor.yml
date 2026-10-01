@@ -1,0 +1,6 @@
+---
+# Settings for the monitor (Prometheus, Alertmanager, alert receiver).
+
+# No research accounts here. A research user who could log in to the monitor
+# could reach the alert pipeline that watches the node.
+users_research: []

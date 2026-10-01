@@ -1,0 +1,4 @@
+---
+# No handlers: sudo reads its policy on every call, and user changes need
+# no service restart.
+[]

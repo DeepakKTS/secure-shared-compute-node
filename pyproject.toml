@@ -43,6 +43,9 @@ select = ["E", "F", "W", "I", "UP", "B"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+# An empty parameter set (a testinfra host pattern that matches no host)
+# must fail, not skip: a skipped state test looks like a pass.
+empty_parameter_set_mark = "fail_at_collect"
 markers = [
     "lab: needs the lab VMs; runs against inventory/lab.yml (not in `make test` or CI)",
 ]

@@ -1,0 +1,93 @@
+---
+# Same file name as cloud-init's, replaced in one validated write, so there
+# is never a moment without a working sudo rule for the admin and ubuntu.
+- name: Write the sudo policy
+  ansible.builtin.template:
+    src: sudoers-admins.j2
+    dest: /etc/sudoers.d/90-cloud-init-users
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+
+- name: Keep the admin and ubuntu in the sudo group
+  ansible.builtin.user:
+    name: "{{ item }}"
+    groups: [sudo]
+    append: true
+  loop: "{{ users_sudo_nopasswd }}"
+
+- name: Create the research users group
+  ansible.builtin.group:
+    name: "{{ users_research_group }}"
+    state: present
+
+# append: false makes the research group the only extra group, so a stray
+# sudo, adm or lxd membership is removed.
+- name: Create research users
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    groups: ["{{ users_research_group }}"]
+    append: false
+    shell: "{{ users_research_shell }}"
+    create_home: true
+  loop: "{{ users_research }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Keep research home directories private
+  ansible.builtin.file:
+    path: "/home/{{ item.name }}"
+    state: directory
+    owner: "{{ item.name }}"
+    group: "{{ item.name }}"
+    mode: "{{ users_home_mode }}"
+  loop: "{{ users_research }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# No module in the pinned collections makes SSH keys; ssh-keygen with
+# `creates` runs once per user and never replaces a key. throttle: 1, so two
+# hosts with the same user cannot both start ssh-keygen on one file.
+- name: Make lab SSH keys for research users without one
+  ansible.builtin.command:
+    argv:
+      - ssh-keygen
+      - -q
+      - -t
+      - ed25519
+      - -N
+      - ""
+      - -C
+      - "{{ item.name }}@ssc-lab"
+      - -f
+      - "{{ users_lab_key_dir }}/{{ item.name }}_ed25519"
+    creates: "{{ users_lab_key_dir }}/{{ item.name }}_ed25519"
+  loop: "{{ users_research | rejectattr('ssh_public_key', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  delegate_to: localhost
+  become: false
+  throttle: 1
+  when: users_generate_lab_keys
+
+# exclusive: a key added outside Ansible is removed on the next run.
+- name: Install each research user's SSH key
+  ansible.posix.authorized_key:
+    user: "{{ item.name }}"
+    key: >-
+      {{ item.ssh_public_key if item.ssh_public_key is defined
+      else lookup('ansible.builtin.file', users_lab_key_dir ~ '/' ~ item.name ~ '_ed25519.pub') }}
+    exclusive: true
+    manage_dir: true
+  loop: "{{ users_research }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# A sudo policy change is checked over a new connection, not the one that
+# made it (CLAUDE.md rule 4).
+- name: Use a new connection for the sudo check
+  ansible.builtin.meta: reset_connection
+
+- name: Confirm the admin still has passwordless sudo
+  ansible.builtin.ping:

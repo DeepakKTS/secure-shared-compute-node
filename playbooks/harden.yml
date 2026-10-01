@@ -8,3 +8,10 @@
     - role: base
       become: true
       tags: [base]
+
+- name: Access controls on the node and the monitor
+  hosts: node:monitor
+  roles:
+    - role: users
+      become: true
+      tags: [users]

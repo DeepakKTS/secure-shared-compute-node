@@ -1,0 +1,10 @@
+---
+# Settings for the compute node (the server being protected).
+
+# Research users: {name, ssh_public_key}. Without ssh_public_key the lab makes
+# a key pair in .lab/keys/<name>_ed25519 (users_generate_lab_keys in all.yml).
+# In the small profile the node is also in the monitor group; this file wins
+# because Ansible applies same-level groups in name order (node after monitor).
+users_research:
+  - name: alice
+  - name: bob

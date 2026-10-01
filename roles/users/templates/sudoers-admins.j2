@@ -1,0 +1,5 @@
+# Managed by Ansible (role: users). Do not edit by hand.
+# Replaces the file cloud-init wrote. Research users get no sudo rights.
+{% for user in users_sudo_nopasswd %}
+{{ user }} ALL=(ALL) NOPASSWD:ALL
+{% endfor %}
