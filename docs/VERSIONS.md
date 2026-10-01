@@ -30,3 +30,4 @@ Fill this in during the build. Check each against the upstream release page or a
 | pytest | 9.1.1 | PyPI JSON API (pypi.org/pypi/<name>/json) | 2026-10-01 |
 | pytest-testinfra | 10.2.2 | PyPI JSON API (pypi.org/pypi/<name>/json) | 2026-10-01 |
 | PyYAML | 6.0.3 | PyPI JSON API (pypi.org/pypi/<name>/json) | 2026-10-01 |
+| fail2ban | 1.0.2-3ubuntu0.1 from noble-updates (universe), installed by roles/fail2ban. Not pinned in apt, so security updates apply (P2.6); the role's handler and checks are written for 1.0.2 behavior (roles/fail2ban/README.md), so recheck them when this version changes | `apt-cache policy fail2ban` and `/var/log/fail2ban.log` ("Starting Fail2ban v1.0.2") on ssc-node | 2026-10-01 |

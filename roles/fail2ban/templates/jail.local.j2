@@ -1,0 +1,25 @@
+# Managed by Ansible (role: fail2ban). Do not edit by hand.
+# The reasons for each value are in roles/fail2ban/README.md.
+#
+# fail2ban reads jail.conf, jail.d/*.conf, jail.local, then jail.d/*.local,
+# so this file wins over the package defaults.
+
+[DEFAULT]
+# Never ban the controller (it runs Ansible, and multipass exec comes from it;
+# CLAUDE.md rule 4) or the monitor. The attacker VM is left out on purpose:
+# scenario S1 needs it bannable.
+ignoreself = true
+ignoreip = 127.0.0.1/8 ::1 {{ fail2ban_ignoreip | join(' ') }}
+
+backend = systemd
+banaction = nftables-multiport
+banaction_allports = nftables-allports
+
+maxretry = {{ fail2ban_maxretry }}
+findtime = {{ fail2ban_findtime }}
+bantime = {{ fail2ban_bantime }}
+
+[sshd]
+enabled = true
+port = {{ fail2ban_sshd_port }}
+mode = {{ fail2ban_sshd_mode }}

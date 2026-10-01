@@ -1,0 +1,104 @@
+---
+# Without these the jail could ban the controller, and with it Ansible and
+# multipass exec (CLAUDE.md rule 4).
+- name: Require the controller address and the monitor
+  ansible.builtin.assert:
+    that:
+      - lab_controller_ip is defined
+      - lab_controller_ip is match('^\d{1,3}(\.\d{1,3}){3}$')
+      - groups['monitor'] | default([]) | length > 0
+    fail_msg: >-
+      lab_controller_ip and the monitor group must come from the generated
+      inventory (make lab-up). Refusing to start a jail that could ban the controller.
+    quiet: true
+
+# Built here, not taken from a variable, so an override cannot drop the
+# controller from the list.
+- name: Never ban the controller or the monitor
+  ansible.builtin.set_fact:
+    fail2ban_ignoreip: >-
+      {{ ([lab_controller_ip]
+          + groups['monitor'] | map('extract', hostvars, 'ansible_host') | list)
+         | unique }}
+
+- name: Require plain IPv4 addresses in the ignore list
+  ansible.builtin.assert:
+    that:
+      - fail2ban_ignoreip | reject('match', '^\d{1,3}(\.\d{1,3}){3}$') | list | length == 0
+    fail_msg: "ignore list must be IPv4 addresses from the inventory: {{ fail2ban_ignoreip }}"
+    quiet: true
+
+# python3-systemd lets fail2ban read the journal (backend = systemd). sshd on
+# Ubuntu 24.04 logs only to the journal.
+- name: Install fail2ban and its journal reader
+  ansible.builtin.apt:
+    name:
+      - fail2ban
+      - python3-systemd
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# Each file is tested together with the rest of the configuration before it
+# replaces the old one: fail2ban-client -t on a copy of /etc/fail2ban that
+# holds the new file.
+- name: Write the sshd jail and the sshd filter override
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/fail2ban/{{ item.path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: >-
+      /bin/sh -c 'd=$(mktemp -d) && cp -a /etc/fail2ban/. "$d"
+      && cp "$1" "$d/{{ item.path }}" && /usr/bin/fail2ban-client -c "$d" -t;
+      rc=$?; rm -rf "$d"; exit $rc' sh %s
+  loop:
+    - {src: jail.local.j2, path: jail.d/ssc.local}
+    - {src: sshd-filter.local.j2, path: filter.d/sshd.local}
+  loop_control:
+    label: "{{ item.path }}"
+  notify: Restart fail2ban
+
+- name: Run fail2ban now and at boot
+  ansible.builtin.systemd_service:
+    name: fail2ban
+    enabled: true
+    state: started
+
+- name: Load the new settings now, so the check below uses them
+  ansible.builtin.meta: flush_handlers
+
+# The running jail, not the file: proves the reload took the new list.
+- name: Read the addresses the running sshd jail ignores
+  ansible.builtin.command: /usr/bin/fail2ban-client get sshd ignoreip
+  register: fail2ban_running_ignoreip
+  changed_when: false
+
+- name: Confirm the running jail never bans the controller
+  ansible.builtin.assert:
+    that:
+      - lab_controller_ip in fail2ban_running_ignoreip.stdout_lines | map('regex_replace', '^\s*[|`]- ', '') | list
+    fail_msg: "the running sshd jail does not ignore {{ lab_controller_ip }}: {{ fail2ban_running_ignoreip.stdout }}"
+    quiet: true
+
+# A jail can run with no action and still log "Ban" (see the handler), so
+# ask the running jail for the action itself; the command fails if it is
+# gone. A jail left that way by an earlier reload gets one restart.
+- name: Ask the running sshd jail for its nftables action
+  ansible.builtin.command: /usr/bin/fail2ban-client get sshd action nftables-multiport actionban
+  register: fail2ban_running_action
+  changed_when: fail2ban_running_action.rc != 0
+  failed_when: false
+  notify: Restart fail2ban
+
+- name: Restart a jail that has lost its action
+  ansible.builtin.meta: flush_handlers
+
+- name: Confirm the running sshd jail bans through nftables
+  ansible.builtin.command: /usr/bin/fail2ban-client get sshd action nftables-multiport actionban
+  register: fail2ban_running_actionban
+  changed_when: false
+  failed_when: >-
+    fail2ban_running_actionban.rc != 0
+    or 'inet f2b-table' not in fail2ban_running_actionban.stdout

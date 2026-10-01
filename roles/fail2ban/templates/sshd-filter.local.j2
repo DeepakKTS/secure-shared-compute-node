@@ -1,0 +1,8 @@
+# Managed by Ansible (role: fail2ban). Do not edit by hand.
+# Overrides filter.d/sshd.conf. The reasons are in roles/fail2ban/README.md.
+
+[Init]
+# The stock match is "_SYSTEMD_UNIT=sshd.service + _COMM=sshd". On Ubuntu the
+# unit is ssh.service, so only the _COMM part matched, and any local user can
+# name a process sshd. journald sets _SYSTEMD_UNIT itself.
+journalmatch = {{ fail2ban_sshd_journalmatch }}

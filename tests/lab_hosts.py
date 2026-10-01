@@ -17,6 +17,28 @@ import yaml
 INVENTORY = Path(__file__).resolve().parent.parent / "inventory" / "lab.yml"
 
 
+def address(name: str) -> str:
+    """`ansible_host` of one inventory host, such as "ssc-attacker"."""
+    for group in yaml.safe_load(INVENTORY.read_text())["all"]["children"].values():
+        found = ((group or {}).get("hosts") or {}).get(name)
+        if found:
+            return found["ansible_host"]
+    raise RuntimeError(f"host {name!r} is not in {INVENTORY}")
+
+
+def unban_attacker(host) -> None:
+    """Lift any fail2ban ban on ssc-attacker on this host.
+
+    The attacker is bannable on purpose (scenario S1), so every test that makes
+    a refused login from it adds to fail2ban's failure count, and a ban would
+    break the next test that connects from it. Before the fail2ban role has
+    run there is nothing to lift.
+    """
+    with host.sudo():
+        if host.run("systemctl is-active --quiet fail2ban").rc == 0:
+            host.check_output(f"fail2ban-client unban {address('ssc-attacker')}")
+
+
 def hosts(*groups: str) -> list[str]:
     """`testinfra_hosts` for inventory groups such as "all", "node", "monitor"."""
     if not INVENTORY.exists():

@@ -1,0 +1,20 @@
+---
+# A source that fails this many times within findtime is banned for bantime.
+# Set in inventory/group_vars/all.yml; these are fallbacks. Times use
+# fail2ban's units (s, m, h, d).
+fail2ban_maxretry: 3
+fail2ban_findtime: 10m
+fail2ban_bantime: 1h
+
+fail2ban_sshd_port: 22
+
+# Which sshd lines count as failures. "normal" counts invalid users, users
+# outside AllowGroups and root, and not a valid user whose key was refused,
+# so a researcher with a broken key setup is not banned. "aggressive" also
+# counts scans and dropped handshakes. Reasons in roles/fail2ban/README.md.
+fail2ban_sshd_mode: normal
+
+# The journal match for sshd. Ubuntu's unit is ssh.service (the stock filter
+# names sshd.service), and journald sets this field itself, so a local user
+# cannot write lines that match it.
+fail2ban_sshd_journalmatch: _SYSTEMD_UNIT=ssh.service

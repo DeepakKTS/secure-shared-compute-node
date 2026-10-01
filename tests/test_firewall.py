@@ -76,6 +76,7 @@ def test_replies_dhcp_and_neighbour_discovery_are_allowed(host) -> None:
         assert rule in chain, rule
 
 
+@pytest.mark.usefixtures("attacker_unbanned")
 def test_scan_from_the_attacker_finds_only_ssh(host) -> None:
     target = variables(host)["ansible_host"]
     scan = attacker().run(

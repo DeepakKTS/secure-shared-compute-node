@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  author: Deepak Kumaran T S
+  description: fail2ban sshd jail on the systemd journal, bans in fail2ban's own nftables table
+  license: MIT
+  min_ansible_version: "2.21"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+dependencies: []

@@ -21,3 +21,6 @@
     - role: firewall
       become: true
       tags: [firewall]
+    - role: fail2ban
+      become: true
+      tags: [fail2ban]

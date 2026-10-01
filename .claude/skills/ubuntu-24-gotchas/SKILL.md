@@ -33,9 +33,12 @@ Verify each on the lab VM before relying on it; record anything that differs.
 
 ## fail2ban
 - sshd logs go to journald. Use `backend = systemd` and install `python3-systemd`.
-- Use `banaction = nftables-multiport`. Confirm bans with `fail2ban-client status sshd` and `nft list ruleset`.
+- Use `banaction = nftables-multiport`. Bans go into `table inet f2b-table` (chain at input priority -1), created on the first ban, not at start. Confirm a ban in nftables (`nft list set inet f2b-table addr-set-sshd`), not only in `fail2ban-client status sshd`: see the next point.
+- fail2ban 1.0.2 (noble) loses a jail's action when a reload changes it. The package starts with its own `banaction = nftables`. A reload to `nftables-multiport` then leaves the jail with no action. It still logs "Ban" and counts bans in `status`, and nothing is blocked. Restart instead of reload after a config change, and check the running action with `fail2ban-client get sshd action nftables-multiport actionban`. `get sshd actions` says "No actions" even when the action is there, so do not use it. Verified in Phase 2.
+- The stock sshd journal match is `_SYSTEMD_UNIT=sshd.service + _COMM=sshd`. Ubuntu's unit is `ssh.service`, so only `_COMM=sshd` matches, and any local user can set that (`prctl(PR_SET_NAME)`) and forge failure lines naming any address. Override it in `filter.d/sshd.local` with `journalmatch = _SYSTEMD_UNIT=ssh.service`. sshd's pre-login lines all carry that field; post-login lines sit in `session-N.scope`. Verified in Phase 2.
 - Whitelist the admin host (`lab_controller_ip`) and monitor with `ignoreip` so testing does not lock you out. Banning the controller also breaks `multipass exec`.
-- With key-only sshd there are no `Failed password` lines. In the default `normal` mode the sshd filter counts lines such as `Invalid user ...` and `... not allowed because none of user's groups are listed in AllowGroups`. A login to an existing, allowed account without its key may not count. Check the real log lines with `fail2ban-regex systemd-journal sshd` before writing S1 (verify in Phase 2).
+- With key-only sshd there are no `Failed password` lines. In the default `normal` mode the sshd filter counts `Invalid user ...`, `... not allowed because none of user's groups are listed in AllowGroups` (root is outside AllowGroups), and similar. It does not count `Connection closed by authenticating user ... [preauth]` (a valid user with no accepted key; NOFAIL in this mode), or the port scan's `banner exchange ... invalid format` (counted only in `ddos` mode). Verified in Phase 2 with real lines. So S1 must use user names that do not exist, or root.
+- In fail2ban-regex output, `Failregex: N total` also counts NOFAIL and `Accepted` hits. To check that lines are counted as failures, feed it only those lines.
 
 ## auditd
 - Rules in `/etc/audit/rules.d/*.rules`, loaded by `augenrules --load`.

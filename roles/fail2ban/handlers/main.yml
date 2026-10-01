@@ -1,0 +1,10 @@
+---
+# Restart, not reload. In fail2ban 1.0.2 a reload that changes a jail's ban
+# action leaves the jail with no action at all: bans are logged and nothing
+# is blocked. This happened on the first run here, when the package had
+# started with its own action. A restart loads the actions fresh and restores
+# current bans from fail2ban's database.
+- name: Restart fail2ban
+  ansible.builtin.systemd_service:
+    name: fail2ban
+    state: restarted
