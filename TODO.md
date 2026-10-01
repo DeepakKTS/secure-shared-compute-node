@@ -56,6 +56,7 @@ Milestone A = every item not marked (Milestone B). See `docs/PLAN.md`.
 - [ ] Exit: all targets up (Milestone B: dashboard shows data)
 
 ## Phase 5: Detection
+- [ ] P5.0 Allowlist matches name and user together (`<comm>:<user>`), so system names such as `systemd*`, `sshd` and `falco*` are exempt only for their own service users. A miner named `systemd-worker` run by alice must still alert; promtool test for `systemd-x:alice` (security review item 7)
 - [ ] P5.1 Prometheus alert rules + promtool in CI (F-50, F-51)
 - [ ] P5.2 role falco (F-52)
 - [ ] P5.3 Falco custom rules (F-53 to F-56)
