@@ -1,0 +1,57 @@
+---
+# Lab check, run at the end of `make lab-up`. Read-only: it changes nothing.
+# Confirms every lab VM answers over SSH, runs Ubuntu 24.04 (ADR 0001), lets
+# the admin use sudo (Ansible needs it), and still has the `ubuntu` user that
+# `multipass exec` logs in as (CLAUDE.md rule 4). Reports architecture and
+# kernel, and warns when the kernel has no BTF, which Falco's modern eBPF
+# driver needs in Phase 5.
+- name: Check the lab VMs
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait until the VM accepts SSH
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+
+    - name: Gather minimal facts
+      ansible.builtin.setup:
+        gather_subset:
+          - min
+
+    - name: Require Ubuntu 24.04
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - ansible_facts['distribution_version'] == '24.04'
+        fail_msg: >-
+          {{ inventory_hostname }} runs {{ ansible_facts['distribution'] }}
+          {{ ansible_facts['distribution_version'] }}; the lab needs Ubuntu 24.04.
+        quiet: true
+
+    - name: Confirm passwordless sudo works for the admin user
+      ansible.builtin.ping:
+      become: true
+
+    - name: Confirm the ubuntu user that multipass exec needs still exists
+      ansible.builtin.getent:
+        database: passwd
+        key: ubuntu
+
+    - name: Check for kernel BTF
+      ansible.builtin.stat:
+        path: /sys/kernel/btf/vmlinux
+      register: lab_check_btf
+
+    - name: Report architecture and kernel
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }}: {{ ansible_facts['architecture'] }},
+          kernel {{ ansible_facts['kernel'] }},
+          BTF {{ 'present' if lab_check_btf.stat.exists else 'missing' }}
+
+    - name: Warn when BTF is missing
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: {{ inventory_hostname }} has no /sys/kernel/btf/vmlinux.
+          Falco's modern eBPF driver will not load; see ADR 0002.
+      when: not lab_check_btf.stat.exists

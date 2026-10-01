@@ -14,7 +14,7 @@ Milestone A = every item not marked (Milestone B). See `docs/PLAN.md`.
 - [ ] P0.5 LAB_PROFILE=small basic support in lab.sh and inventory (F-05, Milestone A part) (built, not verified: needs Multipass)
 - [x] P0.6 CI workflow (F-04)
 - [ ] P0.7 docs/VERSIONS.md filled for Phase 0 tools (built, not verified: Multipass and Ubuntu image rows pending)
-- [ ] P0.8 playbooks/lab_check.yml (OS, arch, kernel, BTF), run by `make lab-up`
+- [ ] P0.8 playbooks/lab_check.yml (OS, arch, kernel, BTF), run by `make lab-up` (built, not verified: needs VMs)
 - [ ] Exit: `make deps && make lint && make test && make lab-up && make ping`
 
 ## Phase 1: Baseline
