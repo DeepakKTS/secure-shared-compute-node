@@ -56,3 +56,4 @@ Verify each on the lab VM before relying on it; record anything that differs.
 - Recreated VMs get new host keys. The inventory uses `.lab/known_hosts` with `StrictHostKeyChecking=accept-new`, and `lab-down` clears it.
 - `multipass list --format json` gives IPv4 addresses but no netmask. `gen_inventory.py` takes `lab_cidr` from the host's Multipass bridge (the interface holding the controller IP), at most a /24, and uses each VM's address inside it. Other VM tools can also create `bridge1xx` interfaces on macOS; the controller IP from `multipass exec` picks the right one.
 - On an Apple Silicon host, the VMs are arm64.
+- Multipass VMs take the host's timezone (a macOS host in New York gives `America/New_York`). Tools that print local time with no zone, such as Lynis report dates, then drift from UTC. Run them with `TZ=UTC`, and use UTC epoch times for scenario timing. Decide in Phase 2 whether `base` should set the VMs to UTC.

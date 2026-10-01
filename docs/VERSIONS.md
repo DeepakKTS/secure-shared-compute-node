@@ -14,7 +14,7 @@ Fill this in during the build. Check each against the upstream release page or a
 | community.general | 13.4.0 (requires ansible-core >= 2.18.0) | Galaxy API v3 (galaxy.ansible.com) | 2026-10-01 |
 | ansible.posix | 2.2.2 (requires ansible-core >= 2.16.0) | Galaxy API v3 (galaxy.ansible.com) | 2026-10-01 |
 | community.library_inventory_filtering_v1 | 1.1.5 (dependency of community.general, which asks for >=1.0.0) | Galaxy API v3 (galaxy.ansible.com) | 2026-10-01 |
-| Lynis | | | |
+| Lynis | 3.1.7, upstream tarball `lynis-3.1.7.tar.gz`, sha256 b5314a07fd85fa3ffc7da57b508f0108ec3280d84e4af823f805d95cbbc2428c (pinned in playbooks/audit.yml) | cisofy.com/downloads/lynis (published SHA256 matched the downloaded file); GitHub releases API (CISOfy/lynis), latest 3.1.7 published 2026-06-25 | 2026-10-01 |
 | Prometheus | | | |
 | Alertmanager | | | |
 | node_exporter | | | |

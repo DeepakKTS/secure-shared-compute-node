@@ -1,0 +1,121 @@
+---
+# Lynis audit. `make baseline` runs it with audit_label=before on the fresh
+# node; `make audit` runs it with audit_label=after once hardening is done.
+# It installs a pinned Lynis, runs `lynis audit system --quick --no-colors`,
+# and fetches the report to .lab/lynis/<label>/ for scripts/parse_lynis.py.
+#
+# Why the upstream tarball and not apt: Ubuntu's lynis package lags upstream,
+# and the CISOfy apt repository would add an apt source and a key to the
+# machine being measured. The tarball touches only /opt, /var/cache/ssc and
+# /var/lib/ssc. Lynis is shell scripts, so one sha256 covers arm64 and amd64.
+- name: Audit the node with Lynis
+  hosts: node
+  gather_facts: false
+  vars:
+    audit_lynis_version: "3.1.7"
+    # SHA256 published at https://cisofy.com/downloads/lynis/ (docs/VERSIONS.md).
+    audit_lynis_sha256: b5314a07fd85fa3ffc7da57b508f0108ec3280d84e4af823f805d95cbbc2428c
+    audit_lynis_url: "https://downloads.cisofy.com/lynis/lynis-{{ audit_lynis_version }}.tar.gz"
+    audit_lynis_tarball: "/var/cache/ssc/lynis-{{ audit_lynis_version }}.tar.gz"
+    audit_lynis_dir: "/opt/lynis-{{ audit_lynis_version }}"
+    # Reports describe the host's weak spots, so only root reads them.
+    audit_report_dir: /var/lib/ssc/lynis
+    audit_report: "{{ audit_report_dir }}/lynis-report-{{ audit_label }}.dat"
+    audit_labels: [before, after]
+    audit_fetch_dir: "{{ playbook_dir }}/../.lab/lynis/{{ audit_label }}"
+  tasks:
+    - name: Require a known label
+      ansible.builtin.assert:
+        that:
+          - audit_label is defined
+          - audit_label in audit_labels
+        fail_msg: >-
+          Set audit_label to one of {{ audit_labels | join(', ') }}
+          (make baseline and make audit do this).
+        quiet: true
+
+    - name: Create the download cache
+      ansible.builtin.file:
+        path: /var/cache/ssc
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    - name: Create the report directory
+      ansible.builtin.file:
+        path: "{{ audit_report_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      become: true
+
+    # downloads.cisofy.com answers 403 to get_url's default user agent
+    # (ansible-httpget), so name this project instead. The checksum still
+    # decides whether the file is accepted.
+    - name: Download the pinned Lynis tarball
+      ansible.builtin.get_url:
+        url: "{{ audit_lynis_url }}"
+        dest: "{{ audit_lynis_tarball }}"
+        checksum: "sha256:{{ audit_lynis_sha256 }}"
+        http_agent: "ssc-lab-audit (Ansible get_url; secure-shared-compute-node)"
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Create the Lynis directory
+      ansible.builtin.file:
+        path: "{{ audit_lynis_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    # Lynis refuses to run as root unless its include files are owned by root.
+    - name: Unpack Lynis
+      ansible.builtin.unarchive:
+        src: "{{ audit_lynis_tarball }}"
+        dest: "{{ audit_lynis_dir }}"
+        remote_src: true
+        extra_opts: [--strip-components=1, --no-same-owner]
+        creates: "{{ audit_lynis_dir }}/lynis"
+      become: true
+
+    # Lynis finds its include/ directory from the working directory, so run it
+    # from where it was unpacked. It writes report times with plain `date` and
+    # no zone, and Multipass VMs take the host's zone, so force UTC
+    # (docs/EVIDENCE.md). An audit changes no configuration.
+    - name: Run lynis audit system
+      environment:
+        TZ: UTC
+      ansible.builtin.command:
+        argv:
+          - ./lynis
+          - audit
+          - system
+          - --quick
+          - --no-colors
+          - --report-file
+          - "{{ audit_report }}"
+          - --logfile
+          - "{{ audit_report_dir }}/lynis-{{ audit_label }}.log"
+        chdir: "{{ audit_lynis_dir }}"
+      become: true
+      changed_when: false
+
+    - name: Fetch the report to the controller
+      ansible.builtin.fetch:
+        src: "{{ audit_report }}"
+        dest: "{{ audit_fetch_dir }}/{{ inventory_hostname }}-lynis-report.dat"
+        flat: true
+      become: true
+
+    - name: Say where the report is
+      ansible.builtin.debug:
+        msg: >-
+          Lynis {{ audit_lynis_version }} report for {{ inventory_hostname }}:
+          .lab/lynis/{{ audit_label }}/{{ inventory_hostname }}-lynis-report.dat

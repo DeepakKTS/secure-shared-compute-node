@@ -38,7 +38,7 @@ Exit check: `make deps && make lint && make test && make lab-up && make ping` su
 **Goal:** capture how insecure a default server is, before any hardening.
 
 Work:
-- `playbooks/audit.yml` installs Lynis (pinned), runs `lynis audit system --quick --no-colors`, fetches `/var/log/lynis-report.dat` into `.lab/`.
+- `playbooks/audit.yml` installs Lynis (pinned upstream tarball with sha256, into `/opt`), runs `lynis audit system --quick --no-colors` with `TZ=UTC`, writes the report to `/var/lib/ssc/lynis/` (root only), and fetches it to `.lab/lynis/<label>/<host>-lynis-report.dat`.
 - `scripts/parse_lynis.py` converts it to `results/lynis-<phase>.json` with hardening index, warning count, suggestion count, Lynis version, timestamp, host.
 
 Exit check: `make baseline` writes `results/lynis-before.json` with a real hardening index.

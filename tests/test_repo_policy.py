@@ -82,6 +82,16 @@ def test_python_and_uv_pinned_exactly_and_recorded() -> None:
     assert table["uv"].startswith(required[2:])
 
 
+def test_lynis_pin_matches_versions_md() -> None:
+    play = yaml.safe_load((ROOT / "playbooks" / "audit.yml").read_text())[0]
+    version = play["vars"]["audit_lynis_version"]
+    assert EXACT_VERSION.match(version), f"Lynis not pinned exactly: {version}"
+    assert re.fullmatch(r"[0-9a-f]{64}", play["vars"]["audit_lynis_sha256"])
+    recorded = versions_table()["Lynis"]
+    assert recorded.startswith(version), f"VERSIONS.md has {recorded!r}, audit.yml pins {version}"
+    assert play["vars"]["audit_lynis_sha256"] in recorded
+
+
 def test_ansible_cfg_uses_generated_inventory_file() -> None:
     cfg = configparser.ConfigParser()
     cfg.read(ROOT / "ansible.cfg")
