@@ -1,10 +1,14 @@
 # Progress
 
-## HANDOFF (2026-10-01, after P2.7 and the safety work, commit 16af84f)
+## HANDOFF (2026-10-01, after P2.7 and the safety work, commit fe1bf78)
 
-Written at the owner's request; the session stopped here. Start the next session here: read CLAUDE.md, docs/AUTONOMY.md, this section, then TODO.md. A session now does at most 3 TODO tasks (docs/AUTONOMY.md, "Session length"): P2.8 to P2.10 fit one session; P2.11 and the phase end, the next.
+The session stopped here under the session-length rule. It had already done 3 TODO tasks (P2.5 to P2.7) and was very long, so P2.8 was not started. Start the next session here: read CLAUDE.md, docs/AUTONOMY.md, this section, then TODO.md. A session does at most 3 TODO tasks (docs/AUTONOMY.md, "Session length"): P2.8 to P2.10 fit one session; P2.11 and the phase end, the next.
 
-- **State:** current phase 2. Done: P2.0 to P2.7 (base, users, ssh_hardening, firewall ingress, fail2ban, auto_updates, tmp_hardening). CI green on 0707d93 for the last role. Five more commits since then (1f26290, 351ea8b, 4d08470, c6439f2, 16af84f): safety and docs, each pushed with lint and tests passing. Next: P2.8 auditd, P2.9 make idempotency, P2.10 monitor, P2.11 make verify, then the phase end (`/verify-phase`, security-reviewer, README status line).
+- **State:** current phase 2. Done: P2.0 to P2.7 (base, users, ssh_hardening, firewall ingress, fail2ban, auto_updates, tmp_hardening). The README status line says so, and that P2.8 is in progress. Since P2.7: safety and docs commits, each pushed with lint and tests passing. The last three:
+  - e1eeb51: the hooks run with `/usr/bin/python3`.
+  - df3fa8b: search code with the Grep tool, not Bash `grep`.
+  - fe1bf78: the README status line.
+- **Next:** P2.8 auditd, P2.9 make idempotency, P2.10 monitor, P2.11 make verify, then the phase end (`/verify-phase`, security-reviewer, README status line).
 - **Lab:** ssc-node 192.168.252.2, ssc-monitor .3, ssc-attacker .4, controller .1 on bridge102 (lab_cidr 192.168.252.0/24). Snapshots on all 3 VMs: pre-harden, pre-users, pre-ssh, pre-firewall, pre-fail2ban, pre-tmp. Restoring one needs the user's confirmation. The node now has a 512M tmpfs `/tmp` and `/dev/shm`, both `nosuid,nodev,noexec`. The node's pending security updates were installed in P2.7. `/home/ssc-admin/uu-run.log` on the node is that run's output, kept as evidence.
 - **Guardrails (docs/AUTONOMY.md, enforced by hooks in `.claude/settings.json`):**
   - **The guard hook** (`.claude/hooks/guard_delete.py`, PreToolUse, fails closed) covers these commands: `rm`, `unlink`, `shred`, `truncate`, find's `-delete`, `git clean`, `rsync` with a delete option, and `mv` onto `/dev/null`. Each must be a plain command whose targets are all in `.lab/` (not `.lab` itself or `.lab/keys`) or build output.
@@ -35,7 +39,8 @@ Written at the owner's request; the session stopped here. Start the next session
 - **Known issues:**
   - `git push` sometimes waits on a macOS keychain prompt (`git credential-osxkeychain get`). The user unlocks it; `gh auth setup-git` would avoid it (the user's decision).
   - c55d7f1 also added `tests/test_tmp_hardening.py` in full, although its message calls that change a format fix. Left as is (owner's decision).
-  - The hooks run under the host's `python3` (miniconda 3.13 here; the hook tests also pass with `/usr/bin/python3` 3.9.6). If `python3` disappears from PATH, the guard blocks every Bash call (fail closed); fix PATH or the settings entry with the Edit tool.
+  - The hooks run with `/usr/bin/python3` (3.9.6 on this Mac, from the Xcode command line tools; 3.12 on the Ubuntu CI runner). If it breaks (for example the command line tools are removed), the guard blocks every Bash call (fail closed). Fix it with the Edit tool on `.claude/settings.json`, which the guard does not see.
+  - This session's harness had no Grep tool. To search code, use the Read tool, not Bash `grep` (docs/AUTONOMY.md, "Bash calls"); a later session may have Grep.
 - **Open review items, not yet done:** P7.0a to P7.0c (TODO). From the second Phase 0 review: `gen_inventory.py --multipass-json` is accepted on the production path (item 4); `lab.sh forget_host_key` still uses `ipv4[0]`; on a Linux host with multipass in /usr/bin the lab.sh tests could reach the real binary.
 
 One line per task: date, task ID, commit, what was verified. "built, not verified" means the box stays unticked.
