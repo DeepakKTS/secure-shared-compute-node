@@ -1,0 +1,9 @@
+---
+# Size of the /tmp tmpfs, in bytes with k, M or G. tmpfs lives in RAM (pages
+# count against the memory of the user who wrote them), so keep it well
+# below RAM. Set in inventory/group_vars/node.yml.
+tmp_hardening_tmp_size: 512M
+
+# Mount options for both paths. noexec stops running a binary dropped there;
+# nosuid ignores setuid bits; nodev ignores device files.
+tmp_hardening_options: [nosuid, nodev, noexec]

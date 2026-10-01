@@ -32,7 +32,11 @@ Verify each on the lab VM before relying on it; record anything that differs.
 ## /tmp
 - /tmp is on the root filesystem by default, not tmpfs. To mount it noexec, enable systemd's `tmp.mount` with a drop-in setting `Options=mode=1777,strictatime,nosuid,nodev,noexec`, or an fstab entry. Reboot or remount and confirm with `findmnt /tmp`.
 - noexec blocks `./binary`, not `sh script` or `python script`. Do not claim otherwise.
-- /dev/shm: add fstab or mount unit options `noexec,nosuid,nodev`.
+- /dev/shm: add fstab or mount unit options `noexec,nosuid,nodev`. systemd-remount-fs applies them at boot. Verified in Phase 2.
+- noble ships `tmp.mount` only in `/usr/share/systemd/`, not as a unit. An fstab entry for `/tmp` is simpler; systemd turns it into `tmp.mount`. Verified in Phase 2.
+- Ansible unpacks every module into the system temp dir (`tempfile.mkdtemp()` in the AnsiballZ wrapper), not remote_tmp. A task that mounts over `/tmp` loses its own result ("No start of json char found"). Give that task `environment: {TMPDIR: /var/tmp}`. Verified in Phase 2.
+- A noexec `/tmp` does not break apt on noble: `dpkg-preconfigure` extracts config scripts to `/var/cache/debconf/tmp.ci`, not `/tmp`. Only `apt-extracttemplates` run by hand defaults to `/tmp`. Verified in Phase 2 with a real noexec `/tmp` and a package with a debconf config script.
+- `ansible.posix.mount` with `state: absent` also deletes the mount point. To undo a `/tmp` mount, use `state: absent_from_fstab`, then `umount`.
 
 ## fail2ban
 - sshd logs go to journald. Use `backend = systemd` and install `python3-systemd`.

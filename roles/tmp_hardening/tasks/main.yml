@@ -1,0 +1,36 @@
+---
+- name: Require a plain size for /tmp
+  ansible.builtin.assert:
+    that:
+      - tmp_hardening_tmp_size is match('^\d+[kMG]?$')
+    fail_msg: "tmp_hardening_tmp_size must be a number with k, M or G: {{ tmp_hardening_tmp_size }}"
+    quiet: true
+
+# /tmp on Ubuntu 24.04 is a directory on the root disk. A tmpfs of its own,
+# capped in size, means filling /tmp cannot fill the root disk, and anything
+# dropped there is gone at reboot. The fstab entry makes systemd mount it at
+# boot (tmp.mount, before services that use /tmp). Mounting it now hides the
+# old /tmp files; running services keep their own private /tmp.
+# TMPDIR: Ansible unpacks every module into the system temp dir, so on the
+# first run this module would mount over its own files and its result would
+# be lost ("No start of json char found"). /var/tmp is not mounted over.
+- name: Mount /tmp as a hardened tmpfs, now and at boot
+  environment:
+    TMPDIR: /var/tmp
+  ansible.posix.mount:
+    path: /tmp
+    src: tmpfs
+    fstype: tmpfs
+    opts: "{{ (['mode=1777', 'strictatime', 'size=' ~ tmp_hardening_tmp_size] + tmp_hardening_options) | join(',') }}"
+    state: mounted
+
+# /dev/shm is already a tmpfs (nosuid,nodev). The fstab entry adds noexec;
+# systemd applies it at boot by remounting (systemd-remount-fs), and the
+# module remounts it now.
+- name: Harden /dev/shm, now and at boot
+  ansible.posix.mount:
+    path: /dev/shm
+    src: tmpfs
+    fstype: tmpfs
+    opts: "{{ (['rw'] + tmp_hardening_options) | join(',') }}"
+    state: mounted

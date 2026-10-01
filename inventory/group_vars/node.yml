@@ -8,3 +8,7 @@
 users_research:
   - name: alice
   - name: bob
+
+# /tmp is a tmpfs of this size (RAM). Lab node: 2 GB RAM. On DASH, size it to
+# the machine, or give /tmp a disk partition with the same mount options.
+tmp_hardening_tmp_size: 512M
