@@ -1,0 +1,11 @@
+---
+# Extra source networks allowed to reach SSH (campus or VPN ranges on DASH).
+# lab_cidr and lab_controller_ip come from the generated inventory and are
+# always allowed. Set in inventory/group_vars/all.yml.
+firewall_admin_cidrs: []
+
+firewall_ssh_port: 22
+
+# Dropped packets are logged at this rate, so a scan shows up in the journal
+# without flooding it.
+firewall_log_rate: 10/minute

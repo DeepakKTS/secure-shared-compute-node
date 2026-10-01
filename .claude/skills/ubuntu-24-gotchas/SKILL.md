@@ -17,6 +17,10 @@ Verify each on the lab VM before relying on it; record anything that differs.
 ## Firewall
 - ufw is installed by default. Disable it (`ufw disable`, then mask or remove) before enabling the nftables service, so two tools do not manage rules.
 - Enable `nftables.service` so rules load at boot. Check with `nft list ruleset` after a reboot.
+- `ufw.service` shows enabled and active even when ufw itself is inactive (`ENABLED=no`); it is a oneshot. Mask it anyway.
+- Ubuntu's `/etc/nftables.conf` starts with `flush ruleset`, and `nftables.service` has `ExecStop=/usr/sbin/nft flush ruleset`. Both wipe every table, including fail2ban's bans. Replace only your own table (`table X` / `delete table X` / define, in one file, one transaction), and reload the service, never restart it.
+- With a default-drop input policy, allow DHCP replies (`udp sport 67 dport 68`, and DHCPv6 547 to 546 from `fe80::/10`). Otherwise the lease cannot renew and the VM loses its address hours later. `nftables.service` runs before `network-pre.target`, so the rules are already active during boot-time DHCP.
+- A closed port already answers with a reset, so "only 22 open" in a scan does not prove a firewall. Check that closed ports time out (dropped), and that a fresh listener on a high port is unreachable from another host.
 
 ## apt
 - `needrestart` may prompt during non-interactive upgrades. Set `NEEDRESTART_MODE=a` in the environment for apt tasks, or configure `/etc/needrestart/conf.d/`.

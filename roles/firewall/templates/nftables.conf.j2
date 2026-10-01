@@ -1,0 +1,41 @@
+#!/usr/sbin/nft -f
+# Managed by Ansible (role: firewall). Do not edit by hand.
+# The reasons for each rule are in roles/firewall/README.md.
+#
+# Only this project's table is replaced, in one transaction: create it if it
+# is missing, delete it, define it again. Tables that other tools own
+# (fail2ban's) stay, unlike Ubuntu's default "flush ruleset".
+table inet ssc_filter
+delete table inet ssc_filter
+
+table inet ssc_filter {
+	chain input {
+		type filter hook input priority filter; policy drop;
+
+		iif "lo" accept
+		ct state established,related accept
+		ct state invalid drop
+
+		# SSH. The controller first: it must never be locked out, and
+		# multipass exec comes from it too (CLAUDE.md rule 4).
+		ip saddr {{ lab_controller_ip }} tcp dport {{ firewall_ssh_port }} accept comment "controller"
+		ip saddr {{ lab_cidr }} tcp dport {{ firewall_ssh_port }} accept comment "lab_cidr"
+{% for cidr in firewall_admin_cidrs %}
+		ip saddr {{ cidr }} tcp dport {{ firewall_ssh_port }} accept comment "firewall_admin_cidrs"
+{% endfor %}
+
+		# DHCP replies. Without them the lease cannot renew and the address
+		# is lost hours later.
+		udp sport 67 udp dport 68 accept comment "dhcpv4"
+		ip6 saddr fe80::/10 udp sport 547 udp dport 546 accept comment "dhcpv6"
+
+		# Ping, rate limited. ICMP errors for allowed traffic arrive as
+		# "related" above.
+		icmp type echo-request limit rate 10/second accept
+		icmpv6 type echo-request limit rate 10/second accept
+		# IPv6 neighbour discovery and router adverts keep IPv6 working.
+		icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-advert } accept
+
+		limit rate {{ firewall_log_rate }} log prefix "SSC-INPUT-DROP: " level info
+	}
+}
