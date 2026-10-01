@@ -7,6 +7,7 @@
 | Unit | pytest | CI | inventory generator, guard logic, Lynis parser, measure.py, report.py using fixtures |
 | Idempotency | `make idempotency` | local lab | Configuration converges, no drift |
 | State | pytest-testinfra over SSH | local lab | Settings are actually live on the host (sshd -T, nft ruleset, mounts, sysctl, services, slices) |
+| Boot | `make reboot`, then testinfra again | local lab | Settings survive a reboot. A unit that runs later in boot can undo them (apport reset `fs.suid_dumpable`; a vendor `sysctl.d` file reset `fs.protected_fifos`). A standard step for every role that sets boot-time state |
 | Behavior | `make simulate` | local lab | Controls stop or detect real attack behavior |
 
 ## Rules

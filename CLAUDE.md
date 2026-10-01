@@ -145,6 +145,7 @@ A `LAB_PROFILE=small` option collapses monitor onto node for low-RAM laptops. Do
 | `make test` | Unit tests that need no VMs | pytest report |
 | `make baseline` | Lynis on fresh node | `results/lynis-before.json` |
 | `make harden` | Hardening + isolation roles | Ansible recap |
+| `make reboot` | Reboot lab VMs (`HOSTS=<group>` to limit) and wait until boot finishes, then rerun testinfra: catches settings a boot-time unit undoes | boot state per VM |
 | `make idempotency` | Runs harden twice, fails if second run has changes | pass/fail |
 | `make monitoring` | Monitor stack + exporters | Grafana URL |
 | `make detection` | Falco, alert rules, egress rules | |

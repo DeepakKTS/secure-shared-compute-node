@@ -40,3 +40,11 @@ make idempotency          # second run must be changed=0
 pytest tests/test_<role>.py
 ```
 If you touched SSH or firewall: open a new SSH session as admin before ending the task (`ssh -F .lab/ssh_config -o ControlPath=none ssc-node true`), and check `multipass exec ssc-node -- true` still works.
+
+If the role sets boot-time state (sysctl, services, mounts, limits, sshd, nftables, auditd rules), the check is not done until it survives a reboot:
+```
+make reboot HOSTS=<group>   # waits for `systemctl is-system-running --wait`
+pytest -m lab tests/test_<role>.py
+scripts/lab.sh check        # multipass exec still works after boot
+```
+A value that is live right after `make harden` can be undone at boot. In Phase 2 this happened twice: apport reset `fs.suid_dumpable`, and a vendor `sysctl.d` file reset `fs.protected_fifos`. Take the snapshot for an SSH or firewall task before its first reboot.

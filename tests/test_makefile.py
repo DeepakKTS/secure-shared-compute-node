@@ -95,3 +95,11 @@ def test_baseline_audits_then_parses_a_fresh_report() -> None:
 def test_harden_runs_the_playbook_with_optional_tags(args: tuple[str, ...], expected: str) -> None:
     steps = make("-n", "harden", *args).stdout.splitlines()
     assert steps[-1].rstrip() == f".venv/bin/ansible-playbook playbooks/harden.yml{expected}"
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"), [((), ""), (("HOSTS=node",), " -e reboot_hosts=node")]
+)
+def test_reboot_runs_the_playbook_with_optional_hosts(args: tuple[str, ...], expected: str) -> None:
+    steps = make("-n", "reboot", *args).stdout.splitlines()
+    assert steps[-1].rstrip() == f".venv/bin/ansible-playbook playbooks/reboot.yml{expected}"

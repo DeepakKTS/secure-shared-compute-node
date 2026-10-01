@@ -1,0 +1,38 @@
+---
+# Reboot lab VMs and wait until boot has finished (make reboot). A standard
+# Phase 2 check for any role that sets boot-time state: a value that is live
+# right after `make harden` can be undone at boot by a later unit (apport
+# reset fs.suid_dumpable; a vendor sysctl.d file reset fs.protected_fifos).
+# After this, rerun the role's testinfra tests.
+#
+# Waiting only for SSH is not enough: services that start late in boot could
+# still change state after the tests ran. So the reboot is done only when
+# `systemctl is-system-running --wait` returns (running or degraded).
+- name: Reboot lab VMs and wait for boot to finish
+  hosts: "{{ reboot_hosts | default('all') }}"
+  gather_facts: false
+  tasks:
+    - name: Reboot
+      ansible.builtin.reboot:
+        reboot_timeout: 600
+        test_command: systemctl is-system-running --wait >/dev/null; true
+      become: true
+
+    # No module reports the manager's boot state or its failed units, so
+    # these two read-only commands stay (noqa for that one rule).
+    - name: Read the boot state  # noqa: command-instead-of-module
+      ansible.builtin.command: systemctl is-system-running
+      register: reboot_state
+      changed_when: false
+      failed_when: reboot_state.stdout not in ['running', 'degraded']
+
+    - name: List failed units, if any  # noqa: command-instead-of-module
+      ansible.builtin.command: systemctl list-units --failed --no-legend --plain
+      register: reboot_failed
+      changed_when: false
+
+    - name: Report the boot state
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }}: {{ reboot_state.stdout }};
+          failed units: {{ reboot_failed.stdout_lines | default([]) | join(', ') or 'none' }}
