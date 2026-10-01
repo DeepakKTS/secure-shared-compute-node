@@ -23,7 +23,7 @@ Milestone A = every item not marked (Milestone B). See `docs/PLAN.md`.
 - [ ] Exit: `make baseline` writes results/lynis-before.json
 
 ## Phase 2: Hardening
-- [ ] P2.0 `scripts/lab.sh snapshot pre-harden`
+- [x] P2.0 `scripts/lab.sh snapshot pre-harden`
 - [ ] P2.1 role base, all hosts (F-20)
 - [ ] P2.2 role users (F-21)
 - [ ] P2.3 role ssh_hardening (F-22)

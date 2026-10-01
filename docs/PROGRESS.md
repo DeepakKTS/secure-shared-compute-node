@@ -17,3 +17,4 @@ One line per task: date, task ID, commit, what was verified. "built, not verifie
 - 2026-10-01 P0.7 337d336 verified: Multipass and Ubuntu image rows filled from `multipass version`, the GitHub releases API, `multipass info` and /etc/cloud/build.info
 - 2026-10-01 P0.8 337d336 verified: lab_check.yml ran from make lab-up on all 3 VMs with changed=0 and failed=0; BTF present on all 3
 - 2026-10-01 Phase 0 exit 337d336 `make deps && make lint && make test && make lab-up && make ping` all exit 0
+- 2026-10-01 P2.0 (this commit) `scripts/lab.sh snapshot pre-harden` exit 0; `multipass list --snapshots` shows pre-harden on all 3 VMs, all Running again afterwards. Taken right after the Phase 0 exit check, before Phase 1 installs Lynis, so a restore also removes Lynis
