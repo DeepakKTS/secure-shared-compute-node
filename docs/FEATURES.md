@@ -53,6 +53,7 @@ Each feature has an ID, the threat it addresses, and how it is proven. A TODO it
 | F-44 | Grafana provisioned datasource and dashboard (host, per-process, per-user, alerts) | dashboard loads with data |
 | F-45 | `alert_receiver` systemd service appending JSONL with receive timestamp | unit active; unit tests for parsing |
 | F-46 | GPU exporter role (DCGM), `gpu_enabled: false` default | role skips cleanly when disabled; documented |
+| F-47 | node_exporter textfile collector exposes a pending-reboot metric (set when `/var/run/reboot-required` exists), so a patched kernel that is not running yet is visible | metric present at the node's `/metrics`; flips when the file is created and removed by hand |
 
 ## Detection (F-5x)
 
@@ -67,6 +68,8 @@ Each feature has an ID, the threat it addresses, and how it is proven. A TODO it
 | F-56 | Falco rule: persistence writes (crontab, systemd user units, rc files) | T7 | S5 |
 | F-57 | falcosidekick forwarding to Alertmanager and alert_receiver | T4 | Falco events reach `alerts.jsonl`, including a second identical event within a few seconds |
 | F-58 | nftables egress set for mining ports, `log_and_drop` default, `log_only` option | T5 | S4 shows drop counter increment and log line |
+| F-59 | Prometheus alert `SSCDiskSpaceLow` (free space on a filesystem below a group_vars threshold) and journald size limits (`SystemMaxUse`, `RuntimeMaxUse` from group_vars) in `base`. A full disk stops logging and auditd, which hides an attack | T6 | `promtool test rules` fires for low free space, not for normal; `systemd-analyze cat-config systemd/journald.conf` shows the limits |
+| F-5A | Prometheus alert `SSCRebootPending` from the F-47 metric, held for a group_vars duration. Patches to the kernel and core libraries only protect after a reboot | T1 | `promtool test rules` fires when the metric is set past the duration |
 
 ## Simulation (F-6x)
 

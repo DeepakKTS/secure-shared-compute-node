@@ -52,6 +52,7 @@ Milestone A = every item not marked (Milestone B). See `docs/PLAN.md`.
 - [ ] P4.6 (Milestone B) role grafana + dashboard JSON (F-44)
 - [ ] P4.7 (Milestone B) role gpu_exporter, disabled by default (F-46)
 - [ ] P4.8 firewall: exporter ports from monitor only; monitor ports per F-29
+- [ ] P4.9 node_exporter textfile metric for pending reboot (F-47)
 - [ ] Exit: all targets up (Milestone B: dashboard shows data)
 
 ## Phase 5: Detection
@@ -60,6 +61,8 @@ Milestone A = every item not marked (Milestone B). See `docs/PLAN.md`.
 - [ ] P5.3 Falco custom rules (F-53 to F-56)
 - [ ] P5.4 role falcosidekick (F-57)
 - [ ] P5.5 firewall egress mining ports (F-58)
+- [ ] P5.6 disk usage alert, with journald size limits (F-59; gap from the system guide)
+- [ ] P5.7 reboot-pending alert (F-5A)
 - [ ] Exit: one Falco event and one Prometheus alert in alerts.jsonl
 
 ## Phase 6: Simulation
