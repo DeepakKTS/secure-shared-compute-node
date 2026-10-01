@@ -46,6 +46,14 @@ Take a Multipass snapshot (`scripts/lab.sh snapshot pre-<task>`) before every ta
 - Every Bash call is logged to `.lab/audit/bash.log` (gitignored): the command, its exit code and a UTC timestamp, from a PostToolUse and PostToolUseFailure hook (`.claude/hooks/log_bash.py`), plus one line for each call the guard blocked. `make audit-log` shows today's blocked attempts; `ALL=1` also lists what ran, `DATE=YYYY-MM-DD` picks another day. The owner reviews it after unattended work.
 - The ask list matches the command text as written. It catches `rm -rf x`, `rm -r x`, `rm -fr x`, `rm -R x`, `/bin/rm ...` and `find ... -delete`, not `rm -Rf x`, `/usr/bin/rm` or `bash -c '...'`. It guards against mistakes; this rule is what covers the rest.
 
+## Bash calls
+
+Both stray deletes were extra pieces added to a call that was doing something else. These rules make that harder to do and easier to spot.
+
+- One purpose per Bash call. No trailing cleanup after other commands; cleanup is its own call, or part of a fixed script.
+- Do not hide errors with `2>/dev/null` unless the command needs it, and then say why in the call's description. A hidden error is how a mistake goes unnoticed.
+- Any temp work on a VM goes through a fixed script in the repo that runs on the VM. It makes its temp directory with `mktemp -d` and removes it with a `trap` on exit, on the VM side. No ad-hoc temp files over `ssh`, and no cleanup typed by hand afterwards.
+
 ## Scratch experiments
 
 - A scratch experiment never points at a live config file. Copy the file first and point the experiment at the copy, or run it on a VM right after a snapshot. Tools can change their input: Ansible's `copy` with `validate` sets `mode` on its source, which once changed the live fail2ban jail file (see docs/PROGRESS.md, P2.5 incident).
