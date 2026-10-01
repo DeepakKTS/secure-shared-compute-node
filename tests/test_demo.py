@@ -153,9 +153,20 @@ def test_lynis_index_comes_from_results() -> None:
 
 
 def test_missing_lynis_result_shows_pending(monkeypatch) -> None:
-    monkeypatch.setattr(demo, "LYNIS", (("after", "lynis-no-such-file.json"),))
+    monkeypatch.setattr(demo, "LYNIS", (("after", "lynis-no-such-file.json", ""),))
     _, text = run_demo(FakeLab())
     assert "  after            pending (no results/lynis-no-such-file.json)" in text.splitlines()
+
+
+def test_interim_audit_is_labelled_as_not_comparable() -> None:
+    _, text = run_demo(FakeLab())
+    lines = text.splitlines()
+    row = next(i for i, line in enumerate(lines) if line.startswith("  interim-p2 "))
+    assert "results/lynis-interim-p2.json" in lines[row]
+    assert lines[row + 1] == (
+        "                   interim: not comparable to the final after-audit"
+        " until P7.0a to P7.0c are done"
+    )
 
 
 def test_node_commands_are_the_reviewed_read_only_set() -> None:

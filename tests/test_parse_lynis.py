@@ -143,6 +143,13 @@ def test_cli_accepts_a_dirty_commit_id(tmp_path: Path) -> None:
     )
 
 
+def test_cli_accepts_the_interim_label(tmp_path: Path) -> None:
+    out = tmp_path / "lynis-interim-p2.json"
+    argv = [str(FIXTURE), "--label", "interim-p2", "--out", str(out), "--git-sha", SHA]
+    assert pl.main(argv) == 0
+    assert json.loads(out.read_text())["label"] == "interim-p2"
+
+
 def test_cli_rejects_unknown_label(tmp_path: Path) -> None:
     with pytest.raises(SystemExit):
         pl.main([str(FIXTURE), "--label", "during", "--out", str(tmp_path / "x.json")])

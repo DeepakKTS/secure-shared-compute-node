@@ -7,7 +7,9 @@ exits non-zero and writes nothing.
 Report times are read as UTC: playbooks/audit.yml runs Lynis with TZ=UTC,
 because Lynis prints dates with no zone.
 
-Usage: scripts/parse_lynis.py REPORT --label before|after [--out FILE] [--git-sha SHA]
+Usage: scripts/parse_lynis.py REPORT --label LABEL [--out FILE] [--git-sha SHA]
+LABEL is before, after, or interim-p2 (an interim audit during Phase 2, not
+comparable to after until P7.0a to P7.0c are done; docs/EVIDENCE.md).
 """
 
 import argparse
@@ -19,7 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-LABELS = ("before", "after")
+LABELS = ("before", "interim-p2", "after")
 REQUIRED = ("hardening_index", "lynis_version", "hostname", "report_datetime_start")
 GIT_SHA = re.compile(r"[0-9a-f]{40}(-dirty)?")
 

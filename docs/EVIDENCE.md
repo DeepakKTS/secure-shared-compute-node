@@ -16,6 +16,8 @@ This project exists to be believed. These rules protect that.
 {"label": "before", "host": "ssc-node", "timestamp": "UTC ISO8601", "lynis_version": "", "hardening_index": 0, "warnings": 0, "suggestions": 0, "git_sha": ""}
 ```
 
+`label` is `before` (the fresh node, `make baseline`), `after` (`make audit`, Phase 7), or `interim-p2`. The interim audit was run on the hardened node during Phase 2 with the same pinned Lynis. It is not comparable to `after` until P7.0a to P7.0c are done: until then Lynis may read profiles outside its own install, and its self-update findings count toward the warnings and suggestions.
+
 `git_sha` is the controller's commit when the result was made. It ends in `-dirty` when files outside `results/` (tracked, or untracked and not gitignored) differed from the commit, because then the commit alone does not describe the code. Commit before `make baseline` or `make audit`, so the result names real code.
 
 `results/scenarios/SX.json`

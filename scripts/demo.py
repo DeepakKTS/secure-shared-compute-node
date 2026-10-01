@@ -29,8 +29,15 @@ NODE = "ssc-node"
 LAB_VMS = ("ssc-node", "ssc-monitor", "ssc-attacker")
 NODE_VARS = ROOT / "inventory" / "group_vars" / "node.yml"
 
-# (label, file in results/). Numbers come only from these files.
-LYNIS = (("before", "lynis-before.json"),)
+# (label, file in results/, note). Numbers come only from these files.
+LYNIS = (
+    ("before", "lynis-before.json", ""),
+    (
+        "interim-p2",
+        "lynis-interim-p2.json",
+        "interim: not comparable to the final after-audit until P7.0a to P7.0c are done",
+    ),
+)
 
 PHASE2_SUITES = (
     "tests/test_base.py",
@@ -137,17 +144,19 @@ class Demo:
 
     def lynis(self) -> None:
         self.say(f"Lynis hardening index on {NODE} (from results/)")
-        for label, name in LYNIS:
+        for label, name, note in LYNIS:
             path = ROOT / "results" / name
             if not path.exists():
                 self.row(label, f"pending (no results/{name})")
-                continue
-            data = json.loads(path.read_text())
-            self.row(
-                label,
-                f"{data['hardening_index']:<4} {data['timestamp']}, Lynis {data['lynis_version']},"
-                f" git {data['git_sha'][:7]} (results/{name})",
-            )
+            else:
+                data = json.loads(path.read_text())
+                self.row(
+                    label,
+                    f"{data['hardening_index']:<4} {data['timestamp']},"
+                    f" Lynis {data['lynis_version']}, git {data['git_sha'][:7]} (results/{name})",
+                )
+            if note:
+                self.row("", note)
 
     def sshd(self) -> None:
         dump = self.node(NODE_COMMANDS["sshd"])
