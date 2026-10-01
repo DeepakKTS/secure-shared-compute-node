@@ -1,0 +1,8 @@
+# Managed by Ansible (role: auto_updates). Do not edit by hand.
+# The reasons are in roles/auto_updates/README.md.
+#
+# Run by apt-daily.timer (refresh the package lists) and
+# apt-daily-upgrade.timer (install security fixes), once a day each.
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "{{ auto_updates_autoclean_days }}";

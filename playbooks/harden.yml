@@ -24,3 +24,6 @@
     - role: fail2ban
       become: true
       tags: [fail2ban]
+    - role: auto_updates
+      become: true
+      tags: [auto_updates]

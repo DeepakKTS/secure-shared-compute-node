@@ -25,6 +25,9 @@ Verify each on the lab VM before relying on it; record anything that differs.
 ## apt
 - `needrestart` may prompt during non-interactive upgrades. Set `NEEDRESTART_MODE=a` in the environment for apt tasks, or configure `/etc/needrestart/conf.d/`.
 - unattended-upgrades is usually preinstalled; configure, do not assume defaults.
+- apt.conf lists add up across `apt.conf.d` files. A later file that sets `Unattended-Upgrade::Allowed-Origins` appends to the vendor list; start it with `#clear Unattended-Upgrade::Allowed-Origins;` to replace it. `#` lines are comments, except `#clear` and `#include`. Verified in Phase 2.
+- `apt-config -c <file> dump` exits 100 on a missing `;`, an open string or an open list, but accepts a stray `}`. Use it as `validate:`, and test the parsed values too. Verified in Phase 2.
+- `unattended-upgrade --dry-run --debug` prints `Allowed origins are: ...` after expanding `${distro_id}`; it changes no packages and takes a few seconds.
 
 ## /tmp
 - /tmp is on the root filesystem by default, not tmpfs. To mount it noexec, enable systemd's `tmp.mount` with a drop-in setting `Options=mode=1777,strictatime,nosuid,nodev,noexec`, or an fstab entry. Reboot or remount and confirm with `findmnt /tmp`.

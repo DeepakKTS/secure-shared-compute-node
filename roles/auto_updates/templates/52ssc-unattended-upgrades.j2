@@ -1,0 +1,23 @@
+# Managed by Ansible (role: auto_updates). Do not edit by hand.
+# The reasons are in roles/auto_updates/README.md.
+#
+# Read after the package's 50unattended-upgrades. apt.conf lists add up
+# across files, so the vendor list is cleared first; the origins below are
+# then the whole list, even if 50unattended-upgrades changes.
+#clear Unattended-Upgrade::Allowed-Origins;
+Unattended-Upgrade::Allowed-Origins {
+{% for origin in auto_updates_origins %}
+	"{{ origin }}";
+{% endfor %}
+};
+
+# Never reboot on its own. A reboot cuts off every researcher's running jobs,
+# so the admin picks the time. A kernel or libc fix protects only after it;
+# /var/run/reboot-required shows one is due (alerted in P4.9 and P5.7).
+Unattended-Upgrade::Automatic-Reboot "false";
+
+# Old kernels fill /boot, and a full /boot breaks the next kernel update.
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+
+Unattended-Upgrade::Mail "{{ auto_updates_mail }}";
+Unattended-Upgrade::MailReport "{{ auto_updates_mail_report }}";

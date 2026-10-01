@@ -29,7 +29,7 @@ Milestone A = every item not marked (Milestone B). See `docs/PLAN.md`.
 - [x] P2.3 role ssh_hardening (F-22)
 - [x] P2.4 role firewall, ingress only for now (F-23; exporter ports from the monitor come in P4.8)
 - [x] P2.5 role fail2ban (F-24)
-- [ ] P2.6 role auto_updates (F-25)
+- [x] P2.6 role auto_updates (F-25)
 - [ ] P2.7 role tmp_hardening (F-26)
 - [ ] P2.8 role auditd (F-27)
 - [ ] P2.9 make idempotency (F-28)

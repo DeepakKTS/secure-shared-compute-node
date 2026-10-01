@@ -24,6 +24,10 @@ firewall_admin_cidrs: []
 firewall_egress_mode: log_and_drop      # log_and_drop | log_only
 firewall_mining_ports: [3333, 3334, 4444, 5555, 7777, 14444]   # commonly seen stratum ports; a starting list, not complete
 
+# Report mail from unattended-upgrades. Empty in the lab (no mail setup);
+# on DASH, the admin mailbox, once the host can send mail.
+auto_updates_mail: ""
+
 fail2ban_maxretry: 3
 fail2ban_findtime: 10m
 fail2ban_bantime: 1h
