@@ -67,6 +67,7 @@ lab-up: check-venv ## Create the lab VMs, write inventory/lab.yml, run the lab c
 	scripts/lab.sh up
 	$(PY) scripts/gen_inventory.py
 	$(ANSIBLE_PLAYBOOK) playbooks/lab_check.yml
+	scripts/lab.sh check
 
 lab-down: ## Delete the lab VMs only (asks first; CONFIRM=yes skips the prompt)
 	scripts/lab.sh down

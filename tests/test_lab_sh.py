@@ -57,6 +57,10 @@ elif cmd == "delete":
     save()
 elif cmd == "snapshot":
     pass
+elif cmd == "exec":
+    # FAKE_MP_EXEC_FAIL lists VMs whose `multipass exec` fails.
+    if args[1] in os.environ.get("FAKE_MP_EXEC_FAIL", "").split(","):
+        sys.exit(1)
 else:
     sys.exit("fake multipass: unsupported command " + cmd)
 """
@@ -266,6 +270,44 @@ def test_down_confirmed_deletes_only_lab_vms(lab: Lab) -> None:
     assert "other-vm" in json.loads(lab.state.read_text())
     assert not any(p.exists() for p in generated)
     assert (lab_dir / "keys" / "ssc_admin_ed25519").exists(), "down keeps the keys"
+
+
+def execs(lab: Lab) -> list[str]:
+    return [c for c in lab.calls() if c.startswith("exec ")]
+
+
+def test_check_runs_sudo_through_multipass_exec_on_each_vm(lab: Lab) -> None:
+    lab.set_vms({"ssc-node": "Running", "ssc-monitor": "Running", "ssc-attacker": "Running"})
+    result = lab.run("check")
+    assert result.returncode == 0, result.stderr
+    assert execs(lab) == [
+        "exec ssc-node -- sudo -n true",
+        "exec ssc-monitor -- sudo -n true",
+        "exec ssc-attacker -- sudo -n true",
+    ]
+
+
+def test_check_fails_when_exec_fails_and_still_checks_the_rest(lab: Lab) -> None:
+    lab.set_vms({"ssc-node": "Running", "ssc-monitor": "Running", "ssc-attacker": "Running"})
+    result = lab.run("check", FAKE_MP_EXEC_FAIL="ssc-monitor")
+    assert result.returncode != 0
+    assert "recovery path is broken on: ssc-monitor" in result.stderr
+    assert len(execs(lab)) == 3
+
+
+def test_check_fails_for_a_missing_or_stopped_vm(lab: Lab) -> None:
+    lab.set_vms({"ssc-node": "Stopped", "ssc-attacker": "Running"})
+    result = lab.run("check")
+    assert result.returncode != 0
+    assert "ssc-node is Stopped" in result.stderr
+    assert "ssc-monitor is absent" in result.stderr
+    assert execs(lab) == ["exec ssc-attacker -- sudo -n true"]
+
+
+def test_check_small_profile_skips_the_monitor(lab: Lab) -> None:
+    lab.set_vms({"ssc-node": "Running", "ssc-attacker": "Running"})
+    assert lab.run("check", LAB_PROFILE="small").returncode == 0
+    assert [c.split()[1] for c in execs(lab)] == ["ssc-node", "ssc-attacker"]
 
 
 def test_snapshot_stops_snapshots_and_restarts_running_vms(lab: Lab) -> None:

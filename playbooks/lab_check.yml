@@ -1,10 +1,12 @@
 ---
 # Lab check, run at the end of `make lab-up`. Read-only: it changes nothing.
 # Confirms every lab VM answers over SSH, runs Ubuntu 24.04 (ADR 0001), lets
-# the admin use sudo (Ansible needs it), and still has the `ubuntu` user that
-# `multipass exec` logs in as (CLAUDE.md rule 4). Reports architecture and
-# kernel, and warns when the kernel has no BTF, which Falco's modern eBPF
-# driver needs in Phase 5.
+# the admin use sudo (Ansible needs it), and keeps the `ubuntu` login that
+# `multipass exec` uses: the user exists, is in `sudo` (so it passes
+# AllowGroups and can repair the VM), and has its authorized_keys (CLAUDE.md
+# rule 4). `scripts/lab.sh check` then proves `multipass exec` itself works.
+# Reports architecture and kernel, and warns when the kernel has no BTF,
+# which Falco's modern eBPF driver needs in Phase 5.
 - name: Check the lab VMs
   hosts: all
   gather_facts: false
@@ -36,6 +38,36 @@
       ansible.builtin.getent:
         database: passwd
         key: ubuntu
+
+    - name: Read the sudo group
+      ansible.builtin.getent:
+        database: group
+        key: sudo
+
+    - name: Require the ubuntu user in the sudo group
+      ansible.builtin.assert:
+        that:
+          - "'ubuntu' in ansible_facts['getent_group']['sudo'][2].split(',')"
+        fail_msg: >-
+          {{ inventory_hostname }}: ubuntu is not in the sudo group. multipass exec
+          could log in but not repair the VM, and AllowGroups would lock it out.
+        quiet: true
+
+    - name: Check the key multipass exec logs in with
+      ansible.builtin.stat:
+        path: "{{ ansible_facts['getent_passwd']['ubuntu'][4] }}/.ssh/authorized_keys"
+      become: true
+      register: lab_check_ubuntu_keys
+
+    - name: Require a non-empty authorized_keys for ubuntu
+      ansible.builtin.assert:
+        that:
+          - lab_check_ubuntu_keys.stat.exists
+          - lab_check_ubuntu_keys.stat.size > 0
+        fail_msg: >-
+          {{ inventory_hostname }}: ubuntu has no authorized_keys, so multipass exec
+          cannot log in.
+        quiet: true
 
     - name: Check for kernel BTF
       ansible.builtin.stat:

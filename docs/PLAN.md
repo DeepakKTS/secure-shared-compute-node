@@ -27,7 +27,7 @@ Work:
   - `lab_controller_ip` is the source address the host uses to reach the VMs. The firewall and fail2ban always allow it.
   - SSH options in the inventory: absolute key path, `IdentitiesOnly=yes` (so a busy ssh-agent does not hit `MaxAuthTries`), and a project `known_hosts` in `.lab/` with `StrictHostKeyChecking=accept-new` (VMs get new host keys when recreated).
   - Also writes `.lab/ssh_config` so a person can run `ssh -F .lab/ssh_config ssc-node`.
-- `playbooks/lab_check.yml`, run at the end of `make lab-up`: waits for connection, asserts Ubuntu 24.04, reports architecture and kernel, warns if `/sys/kernel/btf/vmlinux` is missing (Falco's modern eBPF driver needs it).
+- `playbooks/lab_check.yml`, run at the end of `make lab-up`: waits for connection, asserts Ubuntu 24.04, asserts `ubuntu` is in `sudo` and has its `authorized_keys`, reports architecture and kernel, warns if `/sys/kernel/btf/vmlinux` is missing (Falco's modern eBPF driver needs it). Then `scripts/lab.sh check` runs `multipass exec <vm> -- sudo -n true` from the controller, the recovery path rule 4 protects. Phase 2 reuses it in its exit check.
 - Detect host OS, architecture and free disk in `lab.sh`; fail with a clear message if Multipass is missing.
 - `.github/workflows/ci.yml`: yamllint, ansible-lint, `ansible-playbook --syntax-check`, shellcheck, ruff, pytest for pure-Python unit tests (inventory generation, guard logic, report rendering). CI runs the same `make` targets as a local run.
 

@@ -4,6 +4,7 @@
 #   scripts/lab.sh up               create or start the lab VMs
 #   scripts/lab.sh down             delete the lab VMs (asks first; CONFIRM=yes skips)
 #   scripts/lab.sh status           show lab VMs and local lab files
+#   scripts/lab.sh check            prove `multipass exec` and sudo work on each lab VM
 #   scripts/lab.sh snapshot <name>  stop, snapshot, and restart each lab VM
 #
 # Env: LAB_PROFILE (full | small), UBUNTU_IMAGE, NODE_CPUS, NODE_MEM,
@@ -51,7 +52,7 @@ info() {
 }
 
 usage() {
-    echo "usage: scripts/lab.sh up | down | status | snapshot <name>" >&2
+    echo "usage: scripts/lab.sh up | down | status | check | snapshot <name>" >&2
     exit 2
 }
 
@@ -290,6 +291,31 @@ cmd_status() {
     done
 }
 
+# `multipass exec` logs in over sshd as `ubuntu`, so it is the recovery path
+# CLAUDE.md rule 4 protects, not an out-of-band console. Prove it works, and
+# that `ubuntu` can still use sudo, on every lab VM.
+cmd_check() {
+    local vm state failed=""
+    check_host
+    require_venv
+    require_multipass
+    for vm in $(lab_vms); do
+        state="$(vm_state "$vm")"
+        if [ "$state" != Running ]; then
+            echo "lab.sh: $vm is ${state:-absent}, not Running" >&2
+            failed="$failed $vm"
+        elif multipass exec "$vm" -- sudo -n true; then
+            info "$vm: multipass exec and sudo work"
+        else
+            echo "lab.sh: $vm: 'multipass exec $vm -- sudo -n true' failed" >&2
+            failed="$failed $vm"
+        fi
+    done
+    if [ -n "$failed" ]; then
+        die "the multipass exec recovery path is broken on:$failed. Roll back with the last snapshot (ask first)."
+    fi
+}
+
 valid_snapshot_name() {
     # Multipass applies instance-name rules: letters, digits, and hyphens,
     # starting with a letter and not ending with a hyphen.
@@ -330,6 +356,7 @@ case "${1:-}" in
     up) cmd_up ;;
     down) cmd_down ;;
     status) cmd_status ;;
+    check) cmd_check ;;
     snapshot)
         shift
         cmd_snapshot "$@"

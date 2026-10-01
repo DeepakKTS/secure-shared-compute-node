@@ -69,3 +69,12 @@ def test_lab_profile_reaches_recipes(
         env["LAB_PROFILE"] = env_value
     result = make("-s", "-f", "Makefile", "-f", str(helper), "show-profile", *args, env=env)
     assert result.stdout.strip() == f"LAB_PROFILE={expected}", result.stderr
+
+
+def test_lab_up_ends_with_the_multipass_exec_check() -> None:
+    # -n prints the recipe without running it.
+    steps = make("-n", "lab-up").stdout.splitlines()
+    assert steps[-2:] == [
+        ".venv/bin/ansible-playbook playbooks/lab_check.yml",
+        "scripts/lab.sh check",
+    ]
