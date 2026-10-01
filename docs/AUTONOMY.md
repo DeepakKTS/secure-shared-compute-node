@@ -27,6 +27,10 @@ One TODO task per cycle.
 
 Take a Multipass snapshot (`scripts/lab.sh snapshot pre-<task>`) before every task that changes sshd, nftables, PAM, sudoers, or fail2ban. A mistake in any of these can lock out SSH, and the snapshot is the real rollback.
 
+## Session length
+
+Both stray deletes happened late in very long sessions. So a session does at most 3 TODO tasks. Then it writes the HANDOFF and stops, and the owner starts a fresh session. It stops earlier if the context is past half full. The owner can check that with `/context`. Claude cannot run that command itself, so it judges from the session's length and says so when it stops. Work that is not a TODO task (a fix the owner asks for, a review) counts toward the length, not toward the 3.
+
 ## Stop and wait for the owner when
 
 - something needs the owner: an install, a sudo password, or a GitHub setting;
@@ -35,7 +39,7 @@ Take a Multipass snapshot (`scripts/lab.sh snapshot pre-<task>`) before every ta
 - a change would weaken a rule in CLAUDE.md section 3;
 - an action is on the ask list in `.claude/settings.json`;
 - anything targets an IP outside `inventory/lab.yml`;
-- the context gets long. Write the HANDOFF section at the top of `docs/PROGRESS.md` first.
+- the session has finished 3 TODO tasks, or the context is past half full, whichever comes first (see "Session length"). Write the HANDOFF section at the top of `docs/PROGRESS.md` first.
 
 ## Deleting files
 
