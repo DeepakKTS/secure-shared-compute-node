@@ -54,5 +54,5 @@ Verify each on the lab VM before relying on it; record anything that differs.
 - The real rollback is a snapshot: `scripts/lab.sh snapshot <name>` (the VM must be stopped; lab.sh stops and restarts it). Restore with `multipass restore --destructive ssc-node.<name>`, which needs explicit confirmation.
 - VM IPs can change after restart; always regenerate the inventory in `make lab-up`.
 - Recreated VMs get new host keys. The inventory uses `.lab/known_hosts` with `StrictHostKeyChecking=accept-new`, and `lab-down` clears it.
-- `multipass list --format json` gives IPv4 addresses but no netmask. `gen_inventory.py` derives `lab_cidr` as the /24 around the node IP and checks every VM is inside it.
+- `multipass list --format json` gives IPv4 addresses but no netmask. `gen_inventory.py` takes `lab_cidr` from the host's Multipass bridge (the interface holding the controller IP), at most a /24, and uses each VM's address inside it. Other VM tools can also create `bridge1xx` interfaces on macOS; the controller IP from `multipass exec` picks the right one.
 - On an Apple Silicon host, the VMs are arm64.

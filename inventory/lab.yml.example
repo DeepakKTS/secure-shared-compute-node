@@ -11,7 +11,7 @@ all:
       -o StrictHostKeyChecking=accept-new
     ansible_python_interpreter: /usr/bin/python3
     lab_profile: full                # full | small
-    lab_cidr: 192.168.64.0/24        # example only; derived from the node IP
+    lab_cidr: 192.168.64.0/24        # example only; the host's Multipass bridge network, at most a /24
     lab_controller_ip: 192.168.64.1  # example only; the host's address on the lab network
   children:
     node:

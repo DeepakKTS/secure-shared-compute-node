@@ -23,7 +23,7 @@ Work:
 - `scripts/lab.sh up|down|status|snapshot <name>` using Multipass. Generate an admin SSH key into `.lab/keys/` on first run. Pass the public key through cloud-init (`scripts/cloud-init.yaml.tmpl`), keeping the default `ubuntu` user that Multipass needs.
 - `lab.sh down` deletes only the lab VMs by name (`multipass delete --purge <names>`). Never run a bare `multipass purge`, which affects every deleted instance on the machine.
 - `scripts/gen_inventory.py`: reads `multipass list --format json`, writes `inventory/lab.yml` with groups `node`, `monitor`, `attacker`, plus `lab_cidr` and `lab_controller_ip`. This file is also the allowlist for simulation targets.
-  - `multipass list` gives IPs but no netmask. `lab_cidr` is the /24 that contains the node IP, checked against every lab VM, with a `LAB_CIDR` override.
+  - `multipass list` gives IPs but no netmask. `lab_cidr` is the network of the host bridge that Multipass created (bridge100 and up on macOS, `mpqemubr0` or `mpbr0` on Linux), narrowed to at most a /24 and inside the RFC 1918 ranges. A private address is not enough on its own, because a VM bridged onto a campus network also has one. Each VM's address is the one inside `lab_cidr`. A `LAB_CIDR` override may only narrow it.
   - `lab_controller_ip` is the source address the host uses to reach the VMs. The firewall and fail2ban always allow it.
   - SSH options in the inventory: absolute key path, `IdentitiesOnly=yes` (so a busy ssh-agent does not hit `MaxAuthTries`), and a project `known_hosts` in `.lab/` with `StrictHostKeyChecking=accept-new` (VMs get new host keys when recreated).
   - Also writes `.lab/ssh_config` so a person can run `ssh -F .lab/ssh_config ssc-node`.
