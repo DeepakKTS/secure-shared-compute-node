@@ -69,7 +69,7 @@ lab-up: check-venv ## Create the lab VMs, write inventory/lab.yml, run the lab c
 	$(ANSIBLE_PLAYBOOK) playbooks/lab_check.yml
 	scripts/lab.sh check
 
-lab-down: ## Delete the lab VMs only (asks first; CONFIRM=yes skips the prompt)
+lab-down: ## Delete the lab VMs only (you type yes on the terminal; nothing skips it)
 	scripts/lab.sh down
 
 lab-status: ## Show lab VMs and inventory state

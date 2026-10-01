@@ -2,13 +2,14 @@
 # Create, inspect, snapshot, and delete the lab VMs with Multipass.
 #
 #   scripts/lab.sh up               create or start the lab VMs
-#   scripts/lab.sh down             delete the lab VMs (asks first; CONFIRM=yes skips)
+#   scripts/lab.sh down             delete the lab VMs (you type yes on the terminal)
 #   scripts/lab.sh status           show lab VMs and local lab files
 #   scripts/lab.sh check            prove `multipass exec` and sudo work on each lab VM
 #   scripts/lab.sh snapshot <name>  stop, snapshot, and restart each lab VM
 #
 # Env: LAB_PROFILE (full | small), UBUNTU_IMAGE, NODE_CPUS, NODE_MEM,
-# NODE_DISK (same for MONITOR_ and ATTACKER_), LAB_MIN_FREE_GB, CONFIRM.
+# NODE_DISK (same for MONITOR_ and ATTACKER_), LAB_MIN_FREE_GB. There is no
+# variable that skips the `down` prompt.
 #
 # Works with bash 3.2 (the macOS default): no associative arrays, no mapfile.
 set -euo pipefail
@@ -234,16 +235,19 @@ cmd_up() {
     info "lab VMs ready ($LAB_PROFILE profile): $vms"
 }
 
+# Deleting the lab needs a person at a terminal. The answer is read from
+# /dev/tty, not stdin, so a pipe, a script, or an agent without a terminal
+# cannot supply it. No flag or variable skips the prompt (CONFIRM is ignored).
 confirm_delete() {
-    local answer
-    if [ "${CONFIRM:-}" = yes ]; then
-        return 0
+    local answer=""
+    if [ -n "${CONFIRM:-}" ]; then
+        echo "lab.sh: CONFIRM is ignored. Type yes at the prompt instead." >&2
     fi
-    if [ ! -t 0 ]; then
-        die "refusing to delete the lab VMs without confirmation. Run 'make lab-down CONFIRM=yes', or answer the prompt in a terminal."
+    if ! (: </dev/tty) 2>/dev/null; then
+        die "refusing to delete the lab VMs: there is no terminal to ask. Run 'make lab-down' in a terminal and type yes."
     fi
-    printf 'Delete the lab VMs (%s) and their snapshots? Type yes to continue: ' "$ALL_VMS"
-    read -r answer || answer=""
+    printf 'Delete the lab VMs (%s) and their snapshots? Type yes to continue: ' "$ALL_VMS" >/dev/tty
+    read -r answer </dev/tty || answer=""
     [ "$answer" = yes ] || die "not confirmed. Nothing was deleted."
 }
 

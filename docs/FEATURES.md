@@ -8,7 +8,7 @@ Each feature has an ID, the threat it addresses, and how it is proven. A TODO it
 |---|---|---|
 | F-01 | `make lab-up` creates node, monitor, attacker VMs on Multipass with admin key via cloud-init, keeps the `ubuntu` user for Multipass, writes `.lab/ssh_config`, runs `lab_check.yml` | `multipass list` shows 3 running; `ansible all -m ping` succeeds; `ssh -F .lab/ssh_config ssc-node true` succeeds |
 | F-02 | Generated inventory with groups, `lab_cidr` and `lab_controller_ip` | `inventory/lab.yml` exists, gitignored, contains 3 hosts; unit tests cover the generator |
-| F-03 | `make lab-down` with confirmation prompt, deleting only the lab VMs by name | refuses without `CONFIRM=yes` or interactive yes |
+| F-03 | `make lab-down` with a typed confirmation read from `/dev/tty`, deleting only the lab VMs by name | refuses without a terminal, refuses any answer but `yes`, ignores `CONFIRM=yes` |
 | F-04 | CI: yamllint, ansible-lint, syntax-check, shellcheck, ruff, pytest (unit) | GitHub Actions green |
 | F-05 | `LAB_PROFILE=small` two-VM mode | Milestone A: documented; `lab.sh` and the inventory support it. Milestone B: `make all` works with it |
 

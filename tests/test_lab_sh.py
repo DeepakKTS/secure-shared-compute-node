@@ -8,6 +8,8 @@ On macOS this also runs the script under bash 3.2.
 
 import json
 import os
+import pty
+import select
 import shutil
 import stat
 import subprocess
@@ -120,6 +122,8 @@ class Lab:
         }
 
     def run(self, *args: str, **env: str) -> subprocess.CompletedProcess[str]:
+        # start_new_session: no controlling terminal, so /dev/tty cannot be
+        # opened and a prompt can never reach the terminal running pytest.
         return subprocess.run(
             ["/bin/bash", str(self.root / "scripts" / "lab.sh"), *args],
             env={**self.env, **env},
@@ -127,7 +131,35 @@ class Lab:
             capture_output=True,
             text=True,
             check=False,
+            start_new_session=True,
         )
+
+    def run_on_tty(self, answer: str, *args: str, **env: str) -> tuple[int, str]:
+        """Run lab.sh with a pseudo-terminal as its controlling terminal.
+
+        Types `answer` when the prompt appears. Returns (exit code, output).
+        """
+        argv = ["/bin/bash", str(self.root / "scripts" / "lab.sh"), *args]
+        pid, fd = pty.fork()
+        if pid == 0:  # child: the pty is now its controlling terminal
+            os.execve(argv[0], argv, {**self.env, **env})
+        output, typed = b"", False
+        try:
+            while select.select([fd], [], [], 15)[0]:
+                try:
+                    chunk = os.read(fd, 4096)
+                except OSError:  # EIO on Linux once the child exits
+                    break
+                if not chunk:
+                    break
+                output += chunk
+                if not typed and b"Type yes" in output:
+                    os.write(fd, answer.encode() + b"\n")
+                    typed = True
+        finally:
+            os.close(fd)
+        _, status = os.waitpid(pid, 0)
+        return os.waitstatus_to_exitcode(status), output.decode(errors="replace")
 
     def calls(self) -> list[str]:
         return self.log.read_text().splitlines()
@@ -276,15 +308,33 @@ def test_unsupported_host_os_is_rejected(lab: Lab) -> None:
     assert "unsupported host OS 'FreeBSD'" in result.stderr
 
 
-def test_down_without_confirmation_deletes_nothing(lab: Lab) -> None:
-    lab.set_vms({"ssc-node": "Running", "ssc-monitor": "Running", "ssc-attacker": "Running"})
-    result = lab.run("down")
+ALL_RUNNING = {"ssc-node": "Running", "ssc-monitor": "Running", "ssc-attacker": "Running"}
+
+
+@pytest.mark.parametrize("env", [{}, {"CONFIRM": "yes"}])
+def test_down_without_a_terminal_deletes_nothing(lab: Lab, env: dict[str, str]) -> None:
+    lab.set_vms(ALL_RUNNING)
+    result = lab.run("down", **env)
     assert result.returncode != 0
-    assert "CONFIRM=yes" in result.stderr
+    assert "no terminal to ask" in result.stderr
     assert lab.calls() == [], "down must not call multipass before it is confirmed"
 
 
-def test_down_confirmed_deletes_only_lab_vms(lab: Lab) -> None:
+def test_down_ignores_confirm_and_says_so(lab: Lab) -> None:
+    lab.set_vms(ALL_RUNNING)
+    assert "CONFIRM is ignored" in lab.run("down", CONFIRM="yes").stderr
+
+
+@pytest.mark.parametrize("answer", ["", "y", "YES", "no", "yes please"])
+def test_down_refuses_any_answer_but_yes(lab: Lab, answer: str) -> None:
+    lab.set_vms(ALL_RUNNING)
+    code, output = lab.run_on_tty(answer, "down", CONFIRM="yes")
+    assert code != 0
+    assert "Nothing was deleted" in output
+    assert lab.calls() == []
+
+
+def test_down_typed_yes_deletes_only_lab_vms(lab: Lab) -> None:
     lab.set_vms({"ssc-node": "Running", "other-vm": "Running", "ssc-attacker": "Stopped"})
     lab_dir = lab.root / ".lab"
     (lab_dir / "keys").mkdir(parents=True)
@@ -295,8 +345,8 @@ def test_down_confirmed_deletes_only_lab_vms(lab: Lab) -> None:
     ]
     for path in [*generated, lab_dir / "keys" / "ssc_admin_ed25519"]:
         path.write_text("x")
-    result = lab.run("down", CONFIRM="yes")
-    assert result.returncode == 0, result.stderr
+    code, output = lab.run_on_tty("yes", "down")
+    assert code == 0, output
     assert "delete --purge ssc-node ssc-attacker" in lab.calls()
     assert not any(c.split()[0] == "purge" for c in lab.calls()), "never a bare multipass purge"
     assert "other-vm" in json.loads(lab.state.read_text())
