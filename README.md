@@ -18,7 +18,7 @@ Three VMs: `ssc-node` (the protected server), `ssc-monitor` (Prometheus, Alertma
 
 ## Quick start
 
-Requirements: Multipass, Python 3.11+, [uv](https://docs.astral.sh/uv/), make, git. About 5 GB free RAM for the three VMs, and free disk for their images (sizes are set in `scripts/lab.sh`). The VMs run the host's architecture (arm64 on Apple Silicon).
+Requirements: Multipass, [uv](https://docs.astral.sh/uv/) (it installs the pinned Python 3.12), make, git. About 5 GB free RAM for the three VMs, and free disk for their images (sizes are set in `scripts/lab.sh`). The VMs run the host's architecture (arm64 on Apple Silicon).
 
 ```
 make deps

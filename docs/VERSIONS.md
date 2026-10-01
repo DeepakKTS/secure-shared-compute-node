@@ -6,11 +6,12 @@ Fill this in during the build. Check each against the upstream release page or a
 |---|---|---|---|
 | Ubuntu Server | 24.04 LTS | | |
 | Multipass | | | |
-| Python (controller) | | | |
-| uv | | | |
-| ansible-core | | | |
-| community.general | | | |
-| ansible.posix | | | |
+| Python (controller) | 3.12 (`.python-version`; uv-managed CPython 3.12.13 locally) | ansible-core 2.21.4 requires Python >= 3.12 on PyPI | 2026-10-01 |
+| uv | 0.11.29 (local) | `uv --version` | 2026-10-01 |
+| ansible-core | 2.21.4 | PyPI JSON API (pypi.org/pypi/<name>/json) | 2026-10-01 |
+| community.general | 13.4.0 (requires ansible-core >= 2.18.0) | Galaxy API v3 (galaxy.ansible.com) | 2026-10-01 |
+| ansible.posix | 2.2.2 (requires ansible-core >= 2.16.0) | Galaxy API v3 (galaxy.ansible.com) | 2026-10-01 |
+| community.library_inventory_filtering_v1 | 1.1.5 (dependency of community.general, which asks for >=1.0.0) | Galaxy API v3 (galaxy.ansible.com) | 2026-10-01 |
 | Lynis | | | |
 | Prometheus | | | |
 | Alertmanager | | | |
@@ -20,10 +21,10 @@ Fill this in during the build. Check each against the upstream release page or a
 | Falco | | | |
 | falcosidekick | | | |
 | DCGM exporter (optional) | | | |
-| ansible-lint | | | |
-| yamllint | | | |
-| ruff | | | |
-| shellcheck (shellcheck-py) | | | |
-| pytest | | | |
-| pytest-testinfra | | | |
-| PyYAML | | | |
+| ansible-lint | 26.9.0 | PyPI JSON API (pypi.org/pypi/<name>/json) | 2026-10-01 |
+| yamllint | 1.38.0 | PyPI JSON API (pypi.org/pypi/<name>/json) | 2026-10-01 |
+| ruff | 0.16.9 | PyPI JSON API (pypi.org/pypi/<name>/json) | 2026-10-01 |
+| shellcheck (shellcheck-py) | 0.11.0.1 | PyPI JSON API (pypi.org/pypi/<name>/json) | 2026-10-01 |
+| pytest | 9.1.1 | PyPI JSON API (pypi.org/pypi/<name>/json) | 2026-10-01 |
+| pytest-testinfra | 10.2.2 | PyPI JSON API (pypi.org/pypi/<name>/json) | 2026-10-01 |
+| PyYAML | 6.0.3 | PyPI JSON API (pypi.org/pypi/<name>/json) | 2026-10-01 |

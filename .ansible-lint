@@ -1,0 +1,13 @@
+---
+# Strictest profile from day one, so Phase 9 (P9.1) needs no rework.
+profile: production
+
+# Collections come from requirements.yml via `make deps`; do not let
+# ansible-lint install anything or call out to the network.
+offline: true
+
+exclude_paths:
+  - .venv/
+  - .ansible/
+  - .lab/
+  - .claude/

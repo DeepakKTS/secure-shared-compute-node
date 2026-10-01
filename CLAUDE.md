@@ -174,7 +174,7 @@ Targets for phases not built yet print "not implemented (Phase N)" and exit non-
 - Make: GNU make 3.81 compatible (the macOS default). No `.ONESHELL`, `.RECIPEPREFIX`, `$(file ...)`, or grouped targets.
 - Templates: header comment `# Managed by Ansible (role: <name>). Do not edit by hand.`
 - Bash: `set -euo pipefail`, shellcheck clean, source `simulate/lib/guard.sh` in every simulation.
-- Python: 3.11+, type hints, ruff clean, standard library first. No network calls outside the lab.
+- Python: 3.12+ (pinned in `.python-version`; ansible-core 2.21 needs it), type hints, ruff clean, standard library first. No network calls outside the lab.
 - Config values that DASH would change (allowed CIDRs, user list, CPU caps, allowlisted processes) live in `inventory/group_vars/`, never hard-coded in roles.
 
 ## 10. Definition of done (whole project)

@@ -1,0 +1,21 @@
+---
+# yamllint config, compatible with what ansible-lint expects.
+extends: default
+
+ignore-from-file: .gitignore
+
+rules:
+  braces:
+    max-spaces-inside: 1
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: false
+  line-length:
+    max: 160
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+  truthy:
+    allowed-values: ["true", "false"]
+    # GitHub Actions uses the key `on:`.
+    check-keys: false

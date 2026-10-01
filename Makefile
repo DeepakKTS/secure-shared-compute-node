@@ -22,6 +22,10 @@ PYTEST := $(BIN)/pytest
 
 COLLECTIONS_DIR := .ansible/collections
 
+# Put .venv/bin first, so tools that call each other (ansible-lint runs
+# ansible-playbook) also use the pinned copies.
+export PATH := $(CURDIR)/$(BIN):$(PATH)
+
 # full: node, monitor, attacker. small: monitor collapsed onto node, which is
 # weaker because a rooted node can then silence its own monitoring.
 LAB_PROFILE ?= full
@@ -49,12 +53,12 @@ deps: ## Install pinned Python and Ansible deps into .venv/ with uv
 	@echo "Installed versions:"
 	@$(PY) --version
 	@$(ANSIBLE) --version | head -1
-	@$(ANSIBLE_LINT) --version | head -1
+	@NO_COLOR=1 $(ANSIBLE_LINT) --version | head -1
 	@$(YAMLLINT) --version
 	@$(RUFF) --version
 	@$(PYTEST) --version
 	@$(SHELLCHECK) --version | sed -n 2p
-	@$(ANSIBLE_GALAXY) collection list -p $(COLLECTIONS_DIR) 2>/dev/null | grep -E '^(ansible\.posix|community\.general) '
+	@$(ANSIBLE_GALAXY) collection list -p $(COLLECTIONS_DIR) 2>/dev/null | grep -E '^(ansible|community)\.'
 
 check-venv:
 	@test -x $(ANSIBLE) || { echo "No .venv/ found. Run 'make deps' first." >&2; exit 1; }

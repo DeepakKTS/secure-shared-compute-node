@@ -1,0 +1,43 @@
+# Python dependencies for the scripts and tests. Install with `make deps`
+# (uv sync). Every direct dependency is pinned exactly; uv.lock pins the rest.
+# Versions are checked upstream and recorded in docs/VERSIONS.md.
+
+[project]
+name = "secure-shared-compute-node"
+version = "0.0.0"
+description = "A hardened, monitored, multi-user Linux compute node, built with Ansible and tested with simulated attacks."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "PyYAML==6.0.3",
+]
+
+[dependency-groups]
+dev = [
+    "ansible-core==2.21.4",
+    "ansible-lint==26.9.0",
+    "pytest==9.1.1",
+    "pytest-testinfra==10.2.2",
+    "ruff==0.16.9",
+    "shellcheck-py==0.11.0.1",
+    "yamllint==1.38.0",
+]
+
+[tool.uv]
+# This repo is not a Python package; uv only manages the environment.
+package = false
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [".ansible", ".lab"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "lab: needs the lab VMs; runs against inventory/lab.yml (not in `make test` or CI)",
+]

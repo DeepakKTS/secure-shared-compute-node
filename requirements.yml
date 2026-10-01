@@ -1,0 +1,12 @@
+---
+# Ansible collections, pinned exactly. Installed by `make deps` into
+# .ansible/collections (see ansible.cfg). Versions recorded in docs/VERSIONS.md.
+collections:
+  - name: ansible.posix
+    version: "2.2.2"
+  - name: community.general
+    version: "13.4.0"
+  # Dependency of community.general (it asks for >=1.0.0); pinned here so
+  # the install does not float.
+  - name: community.library_inventory_filtering_v1
+    version: "1.1.5"

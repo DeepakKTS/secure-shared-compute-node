@@ -2,7 +2,7 @@
 
 ## 1. Install on your laptop
 - Multipass: https://multipass.run (check the install page for your OS)
-- Python 3.11+ and uv (`make deps` uses it to build `.venv/`)
+- uv (`make deps` uses it to build `.venv/` with the pinned Python 3.12; ansible-core 2.21 needs 3.12 or newer)
 - make, git, and the GitHub CLI (`gh`) if you want to create the repo from the terminal
 - Claude Code CLI
 
