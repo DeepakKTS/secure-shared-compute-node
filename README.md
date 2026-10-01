@@ -25,6 +25,10 @@ make deps
 make all
 ```
 
+### Low-RAM laptops: `LAB_PROFILE=small`
+
+`make lab-up LAB_PROFILE=small` creates two VMs instead of three. The node also runs the monitoring stack, and the inventory puts it in both the `node` and `monitor` groups. This is weaker: anyone with root on the node can stop its monitoring, and the silence looks like "all clear". Use it only when the host cannot run three VMs. Pass `LAB_PROFILE=small` on every `make lab-up`, or export it in your shell. Running `make all` end to end with it is planned for Milestone B.
+
 ## Results
 
 <!-- SSC:RESULTS:START -->
