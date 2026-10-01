@@ -9,7 +9,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 STUBS = {
-    "baseline": 1,
     "harden": 2,
     "idempotency": 2,
     "verify": 2,
@@ -77,4 +76,14 @@ def test_lab_up_ends_with_the_multipass_exec_check() -> None:
     assert steps[-2:] == [
         ".venv/bin/ansible-playbook playbooks/lab_check.yml",
         "scripts/lab.sh check",
+    ]
+
+
+def test_baseline_audits_then_parses_a_fresh_report() -> None:
+    steps = make("-n", "baseline").stdout.splitlines()
+    assert steps[-3:] == [
+        "rm -f .lab/lynis/before/ssc-node-lynis-report.dat",
+        ".venv/bin/ansible-playbook playbooks/audit.yml -e audit_label=before",
+        ".venv/bin/python scripts/parse_lynis.py .lab/lynis/before/ssc-node-lynis-report.dat"
+        " --label before",
     ]

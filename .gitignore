@@ -2,6 +2,8 @@
 inventory/lab.yml
 # gen_inventory.py writes here, then renames; a crash leaves lab IPs in it.
 inventory/.lab.yml.tmp
+# parse_lynis.py and report.py write through a temp file, then rename.
+results/**/.*.tmp
 *.retry
 .venv/
 .ansible/

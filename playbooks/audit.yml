@@ -23,6 +23,8 @@
     audit_report: "{{ audit_report_dir }}/lynis-report-{{ audit_label }}.dat"
     audit_labels: [before, after]
     audit_fetch_dir: "{{ playbook_dir }}/../.lab/lynis/{{ audit_label }}"
+    # Phase 2 writes this SSH drop-in; its presence means "already hardened".
+    audit_hardened_marker: /etc/ssh/sshd_config.d/00-hardening.conf
   tasks:
     - name: Require a known label
       ansible.builtin.assert:
@@ -33,6 +35,25 @@
           Set audit_label to one of {{ audit_labels | join(', ') }}
           (make baseline and make audit do this).
         quiet: true
+
+    # A baseline must describe a default server. Phase 2 writes this SSH
+    # drop-in, so if it exists a "before" audit would record hardened numbers.
+    - name: Look for signs of Phase 2 hardening
+      ansible.builtin.stat:
+        path: "{{ audit_hardened_marker }}"
+      register: audit_hardened
+      when: audit_label == 'before'
+
+    - name: Refuse a baseline of a hardened node
+      ansible.builtin.assert:
+        that:
+          - not audit_hardened.stat.exists
+        fail_msg: >-
+          {{ inventory_hostname }} is already hardened
+          ({{ audit_hardened_marker }} exists). Take the baseline on a
+          default node: restore the pre-harden snapshot first (ask before restoring).
+        quiet: true
+      when: audit_label == 'before'
 
     - name: Create the download cache
       ansible.builtin.file:

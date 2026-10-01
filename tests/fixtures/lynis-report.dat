@@ -1,0 +1,22 @@
+# Lynis Report
+# Synthetic fixture for tests/test_parse_lynis.py, in the format of a real
+# Lynis 3.1.7 report. The values are made up; they are not lab results.
+report_version_major=1
+report_version_minor=0
+report_datetime_start=2026-01-02 03:04:05
+auditor=[Not Specified]
+lynis_version=3.1.7
+os_name=Ubuntu
+os_version=24.04
+hostname=ssc-node
+# Lynis repeats some plain keys (one line per protocol here).
+uncommon_network_protocol_enabled=dccp
+uncommon_network_protocol_enabled=sctp
+warning[]=PKGS-7392|Found one or more vulnerable packages.|-|-|
+warning[]=SSH-7408|Example warning with key=value inside|-|-|
+suggestion[]=BOOT-5122|Set a password on GRUB boot loader|-|-|
+suggestion[]=SSH-7408|Consider hardening SSH configuration|AllowTcpForwarding (set YES to NO)|-|
+suggestion[]=KRNL-6000|One or more sysctl values differ from the scan profile|-|-|
+details[]=SSH-7408|sshd|desc:sshd option AllowTcpForwarding;field:AllowTcpForwarding;
+hardening_index=42
+report_datetime_end=2026-01-02 03:04:15

@@ -97,10 +97,16 @@ lint: check-venv ## yamllint, ansible-lint, syntax-check, shellcheck, ruff
 test: check-venv ## Unit tests that need no VMs
 	$(PYTEST) -m "not lab"
 
-# ---- Later phases (stubs until built) ----------------------------------------
+# ---- Phase 1: baseline audit -------------------------------------------------
 
-baseline: ## Lynis on the fresh node -> results/lynis-before.json
-	@$(call todo,1)
+# Remove the old local report first, so a failed run can never leave a stale
+# report for the parser.
+baseline: check-venv ## Lynis on the fresh node -> results/lynis-before.json
+	rm -f .lab/lynis/before/ssc-node-lynis-report.dat
+	$(ANSIBLE_PLAYBOOK) playbooks/audit.yml -e audit_label=before
+	$(PY) scripts/parse_lynis.py .lab/lynis/before/ssc-node-lynis-report.dat --label before
+
+# ---- Later phases (stubs until built) ----------------------------------------
 
 harden: ## Hardening and isolation roles
 	@$(call todo,2)

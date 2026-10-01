@@ -19,7 +19,7 @@ Milestone A = every item not marked (Milestone B). See `docs/PLAN.md`.
 
 ## Phase 1: Baseline
 - [x] P1.1 playbooks/audit.yml with pinned Lynis (F-10)
-- [ ] P1.2 scripts/parse_lynis.py + unit test (F-11)
+- [x] P1.2 scripts/parse_lynis.py + unit test (F-11)
 - [ ] Exit: `make baseline` writes results/lynis-before.json
 
 ## Phase 2: Hardening
