@@ -1,0 +1,8 @@
+{
+  "list": [
+    {"ipv4": ["192.168.64.10"], "name": "ssc-node", "release": "Ubuntu 24.04 LTS", "state": "Running"},
+    {"ipv4": ["192.168.64.11", "172.17.0.1"], "name": "ssc-monitor", "release": "Ubuntu 24.04 LTS", "state": "Running"},
+    {"ipv4": ["192.168.64.12"], "name": "ssc-attacker", "release": "Ubuntu 24.04 LTS", "state": "Running"},
+    {"ipv4": ["192.168.64.40"], "name": "someone-elses-vm", "release": "Ubuntu 22.04 LTS", "state": "Running"}
+  ]
+}
