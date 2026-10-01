@@ -38,7 +38,12 @@ def save():
     with open(state_path, "w") as f:
         json.dump(vms, f)
 
-if cmd == "list":
+if cmd == "list" and "--snapshots" in args:
+    print(json.dumps({{"errors": [], "info": {{
+        n: {{s: {{"parent": "", "comment": ""}} for s in v.get("snapshots", [])}}
+        for n, v in vms.items() if v.get("snapshots")
+    }}}}))
+elif cmd == "list":
     print(json.dumps({{"list": [
         {{"name": n, "state": v["state"], "ipv4": v["ipv4"], "release": "Ubuntu 24.04 LTS"}}
         for n, v in vms.items()
@@ -56,7 +61,15 @@ elif cmd == "delete":
         vms.pop(n, None)
     save()
 elif cmd == "snapshot":
-    pass
+    snap = args[args.index("--name") + 1]
+    vm = vms[args[-1]]
+    # FAKE_MP_SNAPSHOT_FAIL lists VMs whose snapshot fails.
+    if args[-1] in os.environ.get("FAKE_MP_SNAPSHOT_FAIL", "").split(","):
+        sys.exit("fake multipass: snapshot failed")
+    if snap in vm.get("snapshots", []):
+        sys.exit("fake multipass: snapshot exists")
+    vm.setdefault("snapshots", []).append(snap)
+    save()
 elif cmd == "exec":
     # FAKE_MP_EXEC_FAIL lists VMs whose `multipass exec` fails.
     if args[1] in os.environ.get("FAKE_MP_EXEC_FAIL", "").split(","):
@@ -323,6 +336,55 @@ def test_snapshot_stops_snapshots_and_restarts_running_vms(lab: Lab) -> None:
         "snapshot --name pre-harden ssc-attacker",
         "start ssc-attacker",
     ]
+
+
+def actions(lab: Lab) -> list[str]:
+    return [c for c in lab.calls() if not c.startswith("list ")]
+
+
+def test_snapshot_refuses_when_a_lab_vm_is_missing(lab: Lab) -> None:
+    lab.set_vms({"ssc-node": "Running", "ssc-attacker": "Running"})
+    result = lab.run("snapshot", "pre-harden")
+    assert result.returncode != 0
+    assert "ssc-monitor does not exist" in result.stderr
+    assert actions(lab) == [], "nothing may be stopped when the snapshot cannot be complete"
+
+
+def test_snapshot_small_profile_needs_no_monitor(lab: Lab) -> None:
+    lab.set_vms({"ssc-node": "Running", "ssc-attacker": "Running"})
+    assert lab.run("snapshot", "pre-harden", LAB_PROFILE="small").returncode == 0
+    snapshots = [c for c in actions(lab) if c.startswith("snapshot ")]
+    assert snapshots == [
+        "snapshot --name pre-harden ssc-node",
+        "snapshot --name pre-harden ssc-attacker",
+    ]
+
+
+def test_snapshot_refuses_a_name_collision_before_stopping_anything(lab: Lab) -> None:
+    lab.set_vms({"ssc-node": "Running", "ssc-monitor": "Running", "ssc-attacker": "Running"})
+    state = json.loads(lab.state.read_text())
+    state["ssc-attacker"]["snapshots"] = ["pre-harden"]
+    lab.state.write_text(json.dumps(state))
+    result = lab.run("snapshot", "pre-harden")
+    assert result.returncode != 0
+    assert "ssc-attacker already has a snapshot named 'pre-harden'" in result.stderr
+    assert actions(lab) == []
+
+
+def test_snapshot_failure_starts_the_stopped_vm_again(lab: Lab) -> None:
+    lab.set_vms({"ssc-node": "Running", "ssc-monitor": "Running", "ssc-attacker": "Running"})
+    result = lab.run("snapshot", "pre-harden", FAKE_MP_SNAPSHOT_FAIL="ssc-monitor")
+    assert result.returncode != 0
+    assert actions(lab) == [
+        "stop ssc-node",
+        "snapshot --name pre-harden ssc-node",
+        "start ssc-node",
+        "stop ssc-monitor",
+        "snapshot --name pre-harden ssc-monitor",
+        "start ssc-monitor",
+    ]
+    states = {n: v["state"] for n, v in json.loads(lab.state.read_text()).items()}
+    assert states == {"ssc-node": "Running", "ssc-monitor": "Running", "ssc-attacker": "Running"}
 
 
 @pytest.mark.parametrize("name", ["", "-x", "1abc", "a_b", "abc-", "a b"])

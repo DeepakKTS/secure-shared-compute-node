@@ -325,30 +325,64 @@ valid_snapshot_name() {
     return 0
 }
 
+# Prints the snapshot names of one VM, one per line.
+vm_snapshots() {
+    multipass list --snapshots --format json | "$PY" -c '
+import json, sys
+for name in json.load(sys.stdin).get("info", {}).get(sys.argv[1], {}):
+    print(name)
+' "$1"
+}
+
+# VMs that cmd_snapshot stopped and has not started again yet.
+SNAPSHOT_STOPPED=""
+
+restart_stopped() {
+    local vm
+    for vm in $SNAPSHOT_STOPPED; do
+        echo "lab.sh: snapshot failed; starting $vm again" >&2
+        multipass start "$vm" || echo "lab.sh: could not start $vm. Run 'multipass start $vm'." >&2
+    done
+}
+
+# The snapshot is the real rollback (CLAUDE.md rule 4), so it is all or
+# nothing: every lab VM must exist and be free of the name before any VM is
+# stopped, and a failure part way starts the stopped VMs again.
 cmd_snapshot() {
-    local name="${1:-}" vm state
+    local name="${1:-}" vms vm state
     valid_snapshot_name "$name" || die "usage: lab.sh snapshot <name> (letters, digits, hyphens; starts with a letter)"
     check_host
     require_venv
     require_multipass
-    for vm in $(lab_vms); do
+    vms="$(lab_vms)"
+    for vm in $vms; do
         state="$(vm_state "$vm")"
         case "$state" in
-            "") info "$vm does not exist; skipping" ;;
-            Running | Stopped)
-                if [ "$state" = Running ]; then
-                    info "stopping $vm (snapshots need a stopped VM)"
-                    multipass stop "$vm"
-                fi
-                info "taking snapshot $vm.$name"
-                multipass snapshot --name "$name" "$vm"
-                if [ "$state" = Running ]; then
-                    multipass start "$vm"
-                fi
-                ;;
+            Running | Stopped) ;;
+            "") die "$vm does not exist. A snapshot of part of the lab is no rollback; run 'make lab-up' first." ;;
             *) die "$vm is in state '$state'; a snapshot needs it Running or Stopped" ;;
         esac
+        if vm_snapshots "$vm" | grep -qxF "$name"; then
+            die "$vm already has a snapshot named '$name'. Nothing was stopped. Pick another name."
+        fi
     done
+    trap restart_stopped EXIT
+    for vm in $vms; do
+        state="$(vm_state "$vm")"
+        if [ "$state" = Running ]; then
+            info "stopping $vm (snapshots need a stopped VM)"
+            SNAPSHOT_STOPPED="$SNAPSHOT_STOPPED $vm"
+            multipass stop "$vm"
+        fi
+        info "taking snapshot $vm.$name"
+        multipass snapshot --name "$name" "$vm"
+        if [ "$state" = Running ]; then
+            multipass start "$vm"
+            SNAPSHOT_STOPPED="${SNAPSHOT_STOPPED% "$vm"}"
+        fi
+    done
+    trap - EXIT
+    info "snapshot '$name' taken on: $vms"
     info "to roll back: multipass restore --destructive <vm>.$name (discards the current state; ask first)"
 }
 
