@@ -4,8 +4,8 @@ Fill this in during the build. Check each against the upstream release page or a
 
 | Component | Version | Source checked | Date checked |
 |---|---|---|---|
-| Ubuntu Server | 24.04 LTS; exact image build pending (recorded from `multipass info` when the lab is first created) | | |
-| Multipass | pending (not installed on the build host yet) | | |
+| Ubuntu Server | 24.04.5 LTS server cloud image, serial 20260926, arm64, kernel 6.8.0-142-generic, image sha256 1d6bffe64b848468ac97f821d369a4846d983de1800ccf6b5ec8853e85cefc55. `lab.sh` launches the `24.04` alias, which moves to newer serials (security fixes), so a new lab can get a newer build; record it here when that happens | `multipass info ssc-node`; `/etc/cloud/build.info` and `/etc/os-release` on the VM | 2026-10-01 |
+| Multipass | 1.16.4+mac (host install; multipass and multipassd). Latest upstream release is v1.16.4, published 2026-09-08 | `multipass version`; GitHub releases API (canonical/multipass) | 2026-10-01 |
 | Python (controller) | 3.12.13 (`.python-version`), the uv-managed build locally and in CI (`python-preference = "only-managed"`). It is the newest 3.12 that uv 0.11.29 can install; upstream has 3.12.15, which needs a newer uv | python/cpython tags on GitHub; `uv python list --all-platforms`; ansible-core 2.21.4 requires Python >= 3.12 on PyPI | 2026-10-01 |
 | uv | 0.11.29 (`required-version` in pyproject.toml; `version` input of setup-uv in CI). Upstream latest is 0.12.21 | GitHub releases API (astral-sh/uv), release 0.11.29 published 2026-07-15 | 2026-10-01 |
 | actions/checkout (CI) | v7.0.1, pinned to commit 3d3c42e5aac5ba805825da76410c181273ba90b1 | GitHub releases API | 2026-10-01 |

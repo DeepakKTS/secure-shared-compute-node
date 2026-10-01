@@ -9,13 +9,13 @@ Milestone A = every item not marked (Milestone B). See `docs/PLAN.md`.
 ## Phase 0: Bootstrap
 - [x] P0.1 Makefile skeleton with all targets from CLAUDE.md section 7 (stubs exit non-zero)
 - [x] P0.2 ansible.cfg, requirements.yml (pinned collections), pyproject.toml + uv.lock + .python-version (pinned dev deps), .yamllint, .ansible-lint, .gitignore
-- [ ] P0.3 scripts/lab.sh up/down/status/snapshot with host OS, arch and disk check, admin key generation, cloud-init template (F-01, F-03) (built, not verified: needs Multipass)
-- [ ] P0.4 scripts/gen_inventory.py with lab_cidr, lab_controller_ip, .lab/ssh_config, unit tests (F-02) (built, not verified: needs VMs)
-- [ ] P0.5 LAB_PROFILE=small basic support in lab.sh and inventory (F-05, Milestone A part) (built, not verified: needs Multipass)
+- [x] P0.3 scripts/lab.sh up/down/status/snapshot with host OS, arch and disk check, admin key generation, cloud-init template (F-01, F-03)
+- [x] P0.4 scripts/gen_inventory.py with lab_cidr, lab_controller_ip, .lab/ssh_config, unit tests (F-02)
+- [x] P0.5 LAB_PROFILE=small basic support in lab.sh and inventory (F-05, Milestone A part)
 - [x] P0.6 CI workflow (F-04)
-- [ ] P0.7 docs/VERSIONS.md filled for Phase 0 tools (built, not verified: Multipass and Ubuntu image rows pending)
-- [ ] P0.8 playbooks/lab_check.yml (OS, arch, kernel, BTF), run by `make lab-up` (built, not verified: needs VMs)
-- [ ] Exit: `make deps && make lint && make test && make lab-up && make ping`
+- [x] P0.7 docs/VERSIONS.md filled for Phase 0 tools
+- [x] P0.8 playbooks/lab_check.yml (OS, arch, kernel, BTF), run by `make lab-up`
+- [x] Exit: `make deps && make lint && make test && make lab-up && make ping`
 
 ## Phase 1: Baseline
 - [ ] P1.1 playbooks/audit.yml with pinned Lynis (F-10)
