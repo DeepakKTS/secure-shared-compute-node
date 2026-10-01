@@ -109,6 +109,7 @@ SECRET_PATHS = (
     ".lab/ssh_config",
     ".lab/known_hosts",
     ".lab/vault_pass",
+    ".lab/audit/bash.log",
     ".vault_pass",
     "inventory/lab.yml",
     "inventory/.lab.yml.tmp",

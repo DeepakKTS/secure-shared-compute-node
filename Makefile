@@ -38,7 +38,7 @@ SH_FILES := $(shell find scripts simulate -type f -name '*.sh' 2>/dev/null)
 # `make all` cannot report success before the work exists.
 todo = echo "make $@: not implemented yet (Phase $(1), see TODO.md)" >&2; exit 2
 
-.PHONY: help deps check-venv lab-up lab-down lab-status ping lint test
+.PHONY: help deps check-venv lab-up lab-down lab-status ping lint test audit-log
 .PHONY: baseline harden idempotency monitoring detection verify audit simulate report all
 
 help: ## List targets
@@ -96,6 +96,11 @@ lint: check-venv ## yamllint, ansible-lint, syntax-check, shellcheck, ruff
 
 test: check-venv ## Unit tests that need no VMs
 	$(PYTEST) -m "not lab"
+
+# The hooks in .claude/hooks/ write .lab/audit/bash.log. DATE=YYYY-MM-DD picks
+# another UTC day; ALL=1 also lists the commands that ran.
+audit-log: check-venv ## Show today's Bash commands the guard hook blocked
+	$(PY) scripts/show_bash_log.py $(if $(DATE),--date $(DATE),) $(if $(ALL),--all,)
 
 # ---- Phase 1: baseline audit -------------------------------------------------
 

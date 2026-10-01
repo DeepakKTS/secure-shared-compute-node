@@ -2,12 +2,14 @@
 
 Each case feeds a command string to the exact hook command in
 .claude/settings.json and checks its exit code: 0 lets the command run, 2
-blocks it. The hook only reads the text; no command here is ever run. These
-need no VMs.
+blocks it. The hook only reads the text; no command here is ever run. The
+hook runs from a throwaway copy of the repo layout (the `repo` fixture), so
+nothing is written to this repo's .lab/. These need no VMs.
 """
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -59,7 +61,7 @@ BLOCKED = [
     "cat /dev/null > README.md",
     "echo x >> ansible.cfg",
     "printf 'a: 1\\n' > inventory/group_vars/all.yml",
-    f"echo x > {ROOT}/Makefile",
+    "echo x > {root}/Makefile",
     "echo x > $HOME/notes.txt",
     # Chained, with a target outside the allowed paths.
     "git status && rm -f README.md",
@@ -98,7 +100,7 @@ ALLOWED = [
     "docker run --rm hello",
     "rm -f .lab/lynis/before/ssc-node-lynis-report.dat",
     "rm -r .lab/lynis/before",
-    f"rm -f {ROOT}/.lab/inventory-old.yml",
+    "rm -f {root}/.lab/inventory-old.yml",
     "unlink .lab/old-ssh_config",
     "rm -rf .venv",
     "rm -rf .pytest_cache .ruff_cache",
@@ -124,6 +126,29 @@ ALLOWED = [
 ]
 
 
+# Files the throwaway repo tracks, so the redirect cases have tracked targets.
+TRACKED = ["README.md", "ansible.cfg", "Makefile", "inventory/group_vars/all.yml", "docs/PLAN.md"]
+
+
+@pytest.fixture(scope="session")
+def repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A throwaway copy of the repo layout: the hooks and a few tracked files.
+    The hook takes its root from its own location, so its allowed paths, its
+    tracked-file check and its log (.lab/audit/bash.log) all point here, and
+    the tests never write to this repo's own .lab/."""
+    root = tmp_path_factory.mktemp("repo")
+    hooks = root / ".claude" / "hooks"
+    hooks.mkdir(parents=True)
+    for source in (ROOT / ".claude" / "hooks").glob("*.py"):
+        shutil.copy(source, hooks / source.name)
+    for name in TRACKED:
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_text("x\n")
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "add", *TRACKED], cwd=root, check=True)
+    return root
+
+
 def hook_command() -> str:
     (entry,) = [e for e in SETTINGS["hooks"]["PreToolUse"] if e.get("matcher") == "Bash"]
     (hook,) = entry["hooks"]
@@ -131,8 +156,10 @@ def hook_command() -> str:
     return hook["command"]
 
 
-def run_hook(stdin: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
-    base = {"PATH": os.environ["PATH"], "CLAUDE_PROJECT_DIR": str(ROOT)}
+def run_hook(
+    root: Path, stdin: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
+    base = {"PATH": os.environ["PATH"], "CLAUDE_PROJECT_DIR": str(root)}
     return subprocess.run(
         ["/bin/bash", "-c", hook_command()],
         input=stdin,
@@ -144,51 +171,74 @@ def run_hook(stdin: str, env: dict[str, str] | None = None) -> subprocess.Comple
     )
 
 
-def payload(command: str) -> str:
-    return json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(ROOT)})
+def payload(command: str, root: Path) -> str:
+    command = command.replace("{root}", str(root))
+    return json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(root)})
+
+
+def log_lines(root: Path) -> list[dict]:
+    log = root / ".lab" / "audit" / "bash.log"
+    return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
 
 
 @pytest.mark.parametrize("command", BLOCKED)
-def test_blocks(command: str) -> None:
-    result = run_hook(payload(command))
+def test_blocks(repo: Path, command: str) -> None:
+    result = run_hook(repo, payload(command, repo))
     assert result.returncode == 2, (command, result.stderr)
     assert result.stderr.strip(), "a block must say why"
 
 
 @pytest.mark.parametrize("command", ALLOWED)
-def test_allows(command: str) -> None:
-    result = run_hook(payload(command))
+def test_allows(repo: Path, command: str) -> None:
+    result = run_hook(repo, payload(command, repo))
     assert result.returncode == 0, (command, result.stderr)
 
 
-def test_hook_reads_the_command_and_never_runs_it(tmp_path: Path) -> None:
+def test_hook_reads_the_command_and_never_runs_it(repo: Path, tmp_path: Path) -> None:
     marker = tmp_path / "ran"
-    assert run_hook(payload(f"touch {marker}")).returncode == 0
+    assert run_hook(repo, payload(f"touch {marker}", repo)).returncode == 0
     assert not marker.exists()
 
 
+def test_a_block_is_logged(repo: Path) -> None:
+    before = len(log_lines(repo))
+    assert run_hook(repo, payload("rm -rf build/", repo)).returncode == 2
+    lines = log_lines(repo)
+    assert len(lines) == before + 1
+    entry = lines[-1]
+    assert entry["event"] == "blocked" and entry["command"] == "rm -rf build/"
+    assert "outside .lab/" in entry["reason"]
+    assert entry["ts"].endswith("Z") and entry["cwd"] == str(repo)
+
+
+def test_an_allowed_call_is_not_logged_by_the_guard(repo: Path) -> None:
+    before = len(log_lines(repo))
+    assert run_hook(repo, payload("ls", repo)).returncode == 0
+    assert len(log_lines(repo)) == before
+
+
 @pytest.mark.parametrize("stdin", ["not json", "{}", '{"tool_input": {"command": 7}}'])
-def test_bad_input_blocks(stdin: str) -> None:
-    assert run_hook(stdin).returncode == 2
+def test_bad_input_blocks(repo: Path, stdin: str) -> None:
+    assert run_hook(repo, stdin).returncode == 2
 
 
-def test_a_crashing_interpreter_blocks(tmp_path: Path) -> None:
+def test_a_crashing_interpreter_blocks(repo: Path, tmp_path: Path) -> None:
     # Fail closed: python3 exits 1 here, as on an uncaught error.
     stub = tmp_path / "python3"
     stub.write_text("#!/bin/sh\nexit 1\n")
     stub.chmod(0o755)
-    result = run_hook(payload("ls"), env={"PATH": f"{tmp_path}:/usr/bin:/bin"})
+    result = run_hook(repo, payload("ls", repo), env={"PATH": f"{tmp_path}:/usr/bin:/bin"})
     assert result.returncode == 2
     assert "hook failed (exit 1)" in result.stderr
 
 
-def test_a_missing_interpreter_blocks(tmp_path: Path) -> None:
-    result = run_hook(payload("ls"), env={"PATH": str(tmp_path)})
+def test_a_missing_interpreter_blocks(repo: Path, tmp_path: Path) -> None:
+    result = run_hook(repo, payload("ls", repo), env={"PATH": str(tmp_path)})
     assert result.returncode == 2
 
 
 def test_a_missing_hook_script_blocks(tmp_path: Path) -> None:
-    result = run_hook(payload("ls"), env={"CLAUDE_PROJECT_DIR": str(tmp_path)})
+    result = run_hook(tmp_path, payload("ls", tmp_path))
     assert result.returncode == 2
 
 

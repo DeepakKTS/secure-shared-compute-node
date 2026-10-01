@@ -280,6 +280,17 @@ def check(command: str, cwd: str | None) -> str | None:
     return None
 
 
+def log_block(reason: str, command: object, cwd: object) -> None:
+    """Record the block in .lab/audit/bash.log (bash_log.py). A logging failure
+    never lets the command through; it is only reported."""
+    try:
+        import bash_log
+
+        bash_log.append({"event": "blocked", "reason": reason, "command": command, "cwd": cwd})
+    except Exception as err:
+        print(f"guard_delete: could not log the block ({err!r})", file=sys.stderr)
+
+
 def main() -> int:
     try:
         data = json.load(sys.stdin)
@@ -289,10 +300,12 @@ def main() -> int:
             raise TypeError("tool_input.command is not a string")
     except Exception as err:
         print(f"guard_delete: cannot read the hook input ({err}); blocking.", file=sys.stderr)
+        log_block(f"cannot read the hook input ({err})", None, None)
         return 2
     reason = check(command, cwd if isinstance(cwd, str) else None)
     if reason is None:
         return 0
+    log_block(reason, command, cwd)
     print(
         f"Blocked by .claude/hooks/guard_delete.py: {reason}. Deletes on this host are "
         "allowed only inside .lab/ (not .lab/keys) and build output, and tracked files "

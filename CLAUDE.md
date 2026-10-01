@@ -151,6 +151,7 @@ A `LAB_PROFILE=small` option collapses monitor onto node for low-RAM laptops. Do
 | `make detection` | Falco, alert rules, egress rules | |
 | `make verify` | testinfra against node and monitor | pytest report in `results/` |
 | `make audit` | Lynis after hardening | `results/lynis-after.json` |
+| `make audit-log` | Show the Bash commands the guard hook blocked today (UTC), from `.lab/audit/bash.log`; `DATE=` another day, `ALL=1` also what ran | list of entries |
 | `make simulate` | Runs S1 to S6 from attacker/node | `results/scenarios/*.json` |
 | `make report` | Builds evidence tables | updates README between markers |
 | `make lint` | ansible-lint, yamllint, shellcheck, ruff | |
