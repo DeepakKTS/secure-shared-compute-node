@@ -9,3 +9,4 @@ One line per task: date, task ID, commit, what was verified. "built, not verifie
 - 2026-10-01 P0.5 63b3651 built, not verified (needs Multipass for a real two-VM launch). README documents the small profile and its weakness; unit tests cover lab.sh and inventory small-profile behavior and LAB_PROFILE reaching make recipes; Makefile contract tests added; make lint and make test pass
 - 2026-10-01 P0.6 651d446 (ticked in 6ca1b71) GitHub Actions run 36824227733 green: make deps, make lint (ansible-lint production profile), make test on ubuntu-24.04; actions pinned to commit SHAs
 - 2026-10-01 P0.7 a3e807e built, not verified (Multipass and Ubuntu image rows pending until Multipass is installed). Every pinned Python package, collection and CI action is recorded with source and date; policy test enforces it
+- 2026-10-01 P0.8 539795f built, not verified (needs VMs). lab_check.yml passes ansible-lint production profile and syntax-check; make lint and make test pass
