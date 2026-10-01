@@ -32,7 +32,11 @@
       "Bash(./scripts/lab.sh down:*)",
       "Bash(multipass restore:*)",
       "Bash(rm -rf:*)",
-      "Bash(rm -r:*)"
+      "Bash(rm -r:*)",
+      "Bash(rm -fr:*)",
+      "Bash(rm -R:*)",
+      "Bash(/bin/rm:*)",
+      "Bash(find * -delete*)"
     ],
     "deny": [
       "Read(./.lab/keys/**)",

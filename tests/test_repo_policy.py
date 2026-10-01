@@ -154,10 +154,27 @@ def test_claude_permissions_guard_destructive_actions() -> None:
         "Bash(multipass delete:*)",
         "Bash(multipass purge:*)",
         "Bash(multipass restore:*)",
-        # Recursive deletes on the host ask first (docs/AUTONOMY.md). Prefix
-        # rules miss `rm -fr`, `/bin/rm -r` and the like; the AUTONOMY rule
-        # still applies to those.
+        # Recursive deletes on the host ask first (docs/AUTONOMY.md). Rules
+        # match the command text as written: `rm -R:*` means `rm -R *`, so
+        # it misses `rm -Rf x`, and `bash -c 'rm -r x'` escapes all of them.
+        # The AUTONOMY rule still applies to those.
         "Bash(rm -rf:*)",
         "Bash(rm -r:*)",
+        "Bash(rm -fr:*)",
+        "Bash(rm -R:*)",
+        "Bash(/bin/rm:*)",
+        # `*` works anywhere in a rule; no space before the last `*`, so
+        # `-delete` at the end matches too.
+        "Bash(find * -delete*)",
     ):
         assert rule in perms["ask"], f"{rule} must ask first"
+
+
+def test_claude_permission_rules_use_supported_wildcards() -> None:
+    # Claude Code reads `:*` only at the end of a rule; elsewhere the colon is
+    # a literal character and the rule matches nothing it was meant to
+    # (code.claude.com/docs/en/permissions, "Wildcard patterns").
+    perms = json.loads((ROOT / ".claude" / "settings.json").read_text())["permissions"]
+    for kind in ("allow", "ask", "deny"):
+        for rule in perms[kind]:
+            assert ":*" not in rule[:-2], f"{kind} rule {rule!r} has :* before its end"

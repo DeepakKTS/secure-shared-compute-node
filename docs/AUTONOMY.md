@@ -41,6 +41,12 @@ Take a Multipass snapshot (`scripts/lab.sh snapshot pre-<task>`) before every ta
 
 - No recursive delete on the host (the machine that runs `make`) outside this repo's own generated paths: `.lab/` and build output (`.venv/`, `__pycache__/`, `.pytest_cache/`, `.ruff_cache/`). Run a delete as its own command, not chained after other commands, so the ask rule in `.claude/settings.json` sees it.
 - Cleanup inside scripts, Makefile recipes and Ansible commands uses paths built from a fixed root: the repo root the script finds from its own location (`ROOT` in `scripts/lab.sh`), or a directory the same command just made with `mktemp -d`. Never a bare variable. Write every variable in a recursive delete as `${NAME:?}` (`$${NAME:?}` in a Makefile recipe), so an empty value stops the command. `set -u` alone is not enough: it stops an unset variable, not an empty one. `tests/test_safe_delete.py` checks this.
+- Never chain a delete with other commands (`a && rm ...`, `a; rm ...`). Run it alone, so the command the owner reviews is the delete itself. Claude Code checks every part of a chain against the ask list, but a delete in the middle of a long line is easy to miss when reading it.
+- The ask list matches the command text as written. It catches `rm -rf x`, `rm -r x`, `rm -fr x`, `rm -R x`, `/bin/rm ...` and `find ... -delete`, not `rm -Rf x`, `/usr/bin/rm` or `bash -c '...'`. It guards against mistakes; this rule is what covers the rest.
+
+## Scratch experiments
+
+- A scratch experiment never points at a live config file. Copy the file first and point the experiment at the copy, or run it on a VM right after a snapshot. Tools can change their input: Ansible's `copy` with `validate` sets `mode` on its source, which once changed the live fail2ban jail file (see docs/PROGRESS.md, P2.5 incident).
 
 ## Never
 

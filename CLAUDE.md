@@ -168,7 +168,7 @@ Targets for phases not built yet print "not implemented (Phase N)" and exit non-
 6. Commit small, with conventional messages: `feat(ssh): key-only auth with validated drop-in`.
 7. At the end of a phase, run `/verify-phase` and the `security-reviewer` subagent.
 8. If you find a wrong assumption in these docs, fix the doc in the same commit and say so.
-9. Know what the guardrails are, and do not overstate them. The allow, ask and deny lists in `.claude/settings.json` match commands by prefix. They guard against mistakes. They are not a security boundary: `make LAB_PROFILE=full lab-down` does not match the `make lab-down` ask rule, and `git push origin +main` does not match the force-push deny rules. The real guards are elsewhere:
+9. Know what the guardrails are, and do not overstate them. The allow, ask and deny lists in `.claude/settings.json` match the command text as written (each part of a chain separately; `*` stands for any text, and `:*` only at the end means a trailing ` *`). They guard against mistakes. They are not a security boundary: `make LAB_PROFILE=full lab-down` does not match the `make lab-down` ask rule, and `git push origin +main` does not match the force-push deny rules. The real guards are elsewhere:
    - Force pushes to `main`: the GitHub ruleset on `main`. Check that it is active with `gh api repos/DeepakKTS/secure-shared-compute-node/rules/branches/main`.
    - Deleting the lab: the typed `yes` that `lab.sh down` reads from `/dev/tty`. It stops pipes and flags, not a program that drives a pseudo-terminal.
    - Breaking a VM: the Multipass snapshot. Restoring one needs the user's confirmation.
