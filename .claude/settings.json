@@ -30,7 +30,9 @@
       "Bash(make lab-down:*)",
       "Bash(scripts/lab.sh down:*)",
       "Bash(./scripts/lab.sh down:*)",
-      "Bash(multipass restore:*)"
+      "Bash(multipass restore:*)",
+      "Bash(rm -rf:*)",
+      "Bash(rm -r:*)"
     ],
     "deny": [
       "Read(./.lab/keys/**)",

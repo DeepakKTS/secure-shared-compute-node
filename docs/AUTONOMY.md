@@ -37,6 +37,11 @@ Take a Multipass snapshot (`scripts/lab.sh snapshot pre-<task>`) before every ta
 - anything targets an IP outside `inventory/lab.yml`;
 - the context gets long. Write the HANDOFF section at the top of `docs/PROGRESS.md` first.
 
+## Deleting files
+
+- No recursive delete on the host (the machine that runs `make`) outside this repo's own generated paths: `.lab/` and build output (`.venv/`, `__pycache__/`, `.pytest_cache/`, `.ruff_cache/`). Run a delete as its own command, not chained after other commands, so the ask rule in `.claude/settings.json` sees it.
+- Cleanup inside scripts, Makefile recipes and Ansible commands uses paths built from a fixed root: the repo root the script finds from its own location (`ROOT` in `scripts/lab.sh`), or a directory the same command just made with `mktemp -d`. Never a bare variable. Write every variable in a recursive delete as `${NAME:?}` (`$${NAME:?}` in a Makefile recipe), so an empty value stops the command. `set -u` alone is not enough: it stops an unset variable, not an empty one. `tests/test_safe_delete.py` checks this.
+
 ## Never
 
 - push with failing checks;

@@ -154,5 +154,10 @@ def test_claude_permissions_guard_destructive_actions() -> None:
         "Bash(multipass delete:*)",
         "Bash(multipass purge:*)",
         "Bash(multipass restore:*)",
+        # Recursive deletes on the host ask first (docs/AUTONOMY.md). Prefix
+        # rules miss `rm -fr`, `/bin/rm -r` and the like; the AUTONOMY rule
+        # still applies to those.
+        "Bash(rm -rf:*)",
+        "Bash(rm -r:*)",
     ):
         assert rule in perms["ask"], f"{rule} must ask first"

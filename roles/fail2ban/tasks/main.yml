@@ -41,7 +41,8 @@
 
 # Each file is tested together with the rest of the configuration before it
 # replaces the old one: fail2ban-client -t on a copy of /etc/fail2ban that
-# holds the new file.
+# holds the new file. If mktemp fails, ${d:?} stops the shell before rm runs
+# (docs/AUTONOMY.md: recursive deletes never take an empty path).
 - name: Write the sshd jail and the sshd filter override
   ansible.builtin.template:
     src: "{{ item.src }}"
@@ -52,7 +53,7 @@
     validate: >-
       /bin/sh -c 'd=$(mktemp -d) && cp -a /etc/fail2ban/. "$d"
       && cp "$1" "$d/{{ item.path }}" && /usr/bin/fail2ban-client -c "$d" -t;
-      rc=$?; rm -rf "$d"; exit $rc' sh %s
+      rc=$?; rm -rf "${d:?}"; exit $rc' sh %s
   loop:
     - {src: jail.local.j2, path: jail.d/ssc.local}
     - {src: sshd-filter.local.j2, path: filter.d/sshd.local}
