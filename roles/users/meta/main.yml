@@ -2,8 +2,7 @@
 galaxy_info:
   author: Deepak Kumaran T S
   description: Admin and research accounts, sudo policy, private homes
-  # No LICENSE file in the repo yet; the owner has not chosen one.
-  license: not chosen
+  license: MIT
   min_ansible_version: "2.21"
   platforms:
     - name: Ubuntu
