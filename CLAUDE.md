@@ -173,6 +173,7 @@ Targets for phases not built yet print "not implemented (Phase N)" and exit non-
    - Deleting the lab: the typed `yes` that `lab.sh down` reads from `/dev/tty`. It stops pipes and flags, not a program that drives a pseudo-terminal.
    - Breaking a VM: the Multipass snapshot. Restoring one needs the user's confirmation.
    Use the Edit and Write tools for file changes, not `python3` from the shell.
+10. When the owner runs the TODO loop, follow `docs/AUTONOMY.md`: what each cycle verifies, when to snapshot, and when to stop and wait for the owner.
 
 ## 9. Coding conventions
 
