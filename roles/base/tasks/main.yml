@@ -18,6 +18,62 @@
     group: root
     mode: "0644"
 
+# apport is preinstalled on Ubuntu server images; a minimal image may not have it.
+- name: Look for apport
+  ansible.builtin.stat:
+    path: /etc/default/apport
+  register: base_apport
+
+- name: Turn apport off in its config
+  ansible.builtin.lineinfile:
+    path: /etc/default/apport
+    regexp: "^enabled="
+    line: enabled=0
+  when: base_apport.stat.exists
+
+# Stopping apport.service runs `apport --stop`, which also sets
+# fs.suid_dumpable back to 0.
+- name: Stop and disable apport units
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ base_apport_units }}"
+  when: base_apport.stat.exists
+
+# Masked, so nothing can start apport again at boot or on demand.
+- name: Mask apport units
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    masked: true
+  loop: "{{ base_apport_units }}"
+  when: base_apport.stat.exists
+
+- name: Limit core dumps for login sessions
+  ansible.builtin.template:
+    src: limits-core.conf.j2
+    dest: /etc/security/limits.d/60-ssc-core.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Create the systemd manager drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Limit core dumps for services
+  ansible.builtin.template:
+    src: system-core.conf.j2
+    dest: /etc/systemd/system.conf.d/60-ssc-core.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reexecute systemd
+
 - name: Set the timezone
   community.general.timezone:
     name: "{{ base_timezone }}"

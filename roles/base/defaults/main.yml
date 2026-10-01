@@ -9,6 +9,18 @@ base_packages:
 # tools that print local time with no zone (Lynis) stay correct.
 base_timezone: Etc/UTC
 
+# Core dumps can hold passwords, keys and other users' data. Ubuntu's crash
+# reporter, apport, takes every crash through a core_pattern pipe and, when
+# it starts at boot, sets fs.suid_dumpable=2, which undoes the 0 below. So
+# apport is turned off and its units masked, and the core file size limit is
+# 0 for login sessions (pam_limits) and for services (systemd).
+base_apport_units:
+  - apport.service
+  - apport-forward.socket
+  - apport-autoreport.path
+  - apport-autoreport.timer
+base_core_limit: 0
+
 # NTP pools, the Ubuntu defaults. DASH would point these at campus NTP.
 base_ntp_pools:
   - {name: ntp.ubuntu.com, maxsources: 4}
@@ -47,6 +59,9 @@ base_sysctl:
   dev.tty.ldisc_autoload: 0
   # No core dumps from setuid programs (they can hold secrets).
   fs.suid_dumpable: 0
+  # Plain file name, not a pipe: the kernel obeys the core size limit for a
+  # file, but runs a pipe helper whatever the limit is.
+  kernel.core_pattern: core
   # Shared world-writable dirs (/tmp) hold many users' files. These stop
   # one user from tricking another into following or opening a planted file.
   fs.protected_hardlinks: 1

@@ -1,0 +1,5 @@
+# Managed by Ansible (role: base). Do not edit by hand.
+# No core files from services. Ubuntu's default hard limit is infinity, so a
+# service could raise its soft limit and dump core.
+[Manager]
+DefaultLimitCORE={{ base_core_limit }}

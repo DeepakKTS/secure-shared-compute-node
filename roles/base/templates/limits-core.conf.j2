@@ -1,0 +1,7 @@
+# Managed by Ansible (role: base). Do not edit by hand.
+# No core files from login, SSH, cron or su sessions (pam_limits). The
+# wildcard does not cover root, so root is listed by name.
+*       soft    core    {{ base_core_limit }}
+*       hard    core    {{ base_core_limit }}
+root    soft    core    {{ base_core_limit }}
+root    hard    core    {{ base_core_limit }}

@@ -82,6 +82,38 @@ def test_timezone(host) -> None:
     assert host.check_output("timedatectl show -p Timezone --value") == setting("base_timezone")
 
 
+@pytest.mark.parametrize("unit", DEFAULTS["base_apport_units"])
+def test_apport_unit_is_masked_and_stopped(host, unit: str) -> None:
+    assert host.run(f"systemctl is-enabled {unit}").stdout.strip() == "masked"
+    assert host.run(f"systemctl is-active {unit}").stdout.strip() != "active"
+
+
+def test_apport_is_off_in_its_config(host) -> None:
+    assert host.file("/etc/default/apport").contains("^enabled=0$")
+
+
+def test_core_pattern_does_not_pipe_to_apport(host) -> None:
+    pattern = sysctl(host, "kernel.core_pattern")
+    assert pattern == "core", pattern
+    assert not str(pattern).startswith("|")
+
+
+def test_core_dumps_are_limited_for_login_sessions(host) -> None:
+    # testinfra's SSH session goes through pam_limits like any login.
+    assert host.check_output("ulimit -Hc; ulimit -Sc").split() == ["0", "0"]
+
+
+def test_core_dumps_are_limited_for_services(host) -> None:
+    assert host.check_output("systemctl show -p DefaultLimitCORE --value") == "0"
+    # A running service, not just the default: holds only after a reboot,
+    # because services started before the change keep their old limit.
+    pid = host.check_output("systemctl show -p MainPID --value cron")
+    with host.sudo():
+        limits = host.check_output(f"cat /proc/{pid}/limits")
+    core = re.search(r"^Max core file size\s+(\S+)\s+(\S+)", limits, re.M)
+    assert core.groups() == ("0", "0"), limits
+
+
 def test_needrestart_restarts_without_asking(host) -> None:
     # needrestart cannot print its effective config, so read its conf.d file.
     conf = host.file("/etc/needrestart/conf.d/50-ssc.conf")

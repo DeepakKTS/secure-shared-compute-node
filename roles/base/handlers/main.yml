@@ -9,3 +9,9 @@
   ansible.builtin.systemd_service:
     name: systemd-sysctl
     state: restarted
+
+# The manager reads system.conf.d only when it starts; services started
+# after this get the new default limits. A reboot covers the rest.
+- name: Reexecute systemd
+  ansible.builtin.systemd_service:
+    daemon_reexec: true
