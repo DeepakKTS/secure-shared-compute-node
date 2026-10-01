@@ -146,6 +146,9 @@ def test_claude_permissions_guard_destructive_actions() -> None:
     ):
         assert rule in perms["deny"], f"{rule} must be denied"
     assert "Bash(ssh:*)" not in perms["allow"], "ssh to any host breaks rule 1 (lab only)"
+    # python3 -c could drive a pty past the lab-down prompt, or run ssh and
+    # multipass directly, skipping the ask list. The user removed it.
+    assert "Bash(python3:*)" not in perms["allow"], "python3 must not be auto-allowed"
     for rule in (
         "Bash(make lab-down:*)",
         "Bash(multipass delete:*)",

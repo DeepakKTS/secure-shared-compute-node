@@ -10,7 +10,6 @@
       "Bash(shellcheck:*)",
       "Bash(ruff:*)",
       "Bash(pytest:*)",
-      "Bash(python3:*)",
       "Bash(multipass list:*)",
       "Bash(multipass info:*)",
       "Bash(multipass exec:*)",

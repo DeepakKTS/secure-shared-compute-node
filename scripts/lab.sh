@@ -239,8 +239,8 @@ cmd_up() {
 # /dev/tty, not stdin, so a pipe or redirected input cannot supply it, and no
 # flag or variable skips the prompt (CONFIRM is ignored). This stops scripts
 # and mistakes, not a determined program: anything that drives a
-# pseudo-terminal can still type yes. For agents, the control is the Claude
-# Code ask list.
+# pseudo-terminal can still type yes. The Claude Code ask list adds a guard
+# against agent mistakes, but it is not a security boundary either.
 confirm_delete() {
     local answer=""
     if [ -n "${CONFIRM:-}" ]; then

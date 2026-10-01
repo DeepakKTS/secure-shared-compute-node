@@ -139,7 +139,7 @@ A `LAB_PROFILE=small` option collapses monitor onto node for low-RAM laptops. Do
 |---|---|---|
 | `make deps` | Install Python and Ansible deps into `.venv/` with uv | versions installed |
 | `make lab-up` | Create 3 VMs, inject admin key, write inventory, run `lab_check.yml` | `inventory/lab.yml`, `.lab/ssh_config` |
-| `make lab-down` | Delete the lab VMs only. Needs a typed `yes` read from `/dev/tty`; no flag or variable skips it. A program driving a pseudo-terminal can still type it, so for agents the control is the Claude Code ask list | |
+| `make lab-down` | Delete the lab VMs only. Needs a typed `yes` read from `/dev/tty`; no flag or variable skips it. A program driving a pseudo-terminal can still type it. It stops mistakes, not a determined program (see section 8, item 9) | |
 | `make lab-status` | Show lab VMs and inventory state | |
 | `make ping` | `ansible all -m ansible.builtin.ping` | pass/fail |
 | `make test` | Unit tests that need no VMs | pytest report |
@@ -167,6 +167,11 @@ Targets for phases not built yet print "not implemented (Phase N)" and exit non-
 6. Commit small, with conventional messages: `feat(ssh): key-only auth with validated drop-in`.
 7. At the end of a phase, run `/verify-phase` and the `security-reviewer` subagent.
 8. If you find a wrong assumption in these docs, fix the doc in the same commit and say so.
+9. Know what the guardrails are, and do not overstate them. The allow, ask and deny lists in `.claude/settings.json` match commands by prefix. They guard against mistakes. They are not a security boundary: `make LAB_PROFILE=full lab-down` does not match the `make lab-down` ask rule, and `git push origin +main` does not match the force-push deny rules. The real guards are elsewhere:
+   - Force pushes to `main`: the GitHub ruleset on `main`. Check that it is active with `gh api repos/DeepakKTS/secure-shared-compute-node/rules/branches/main`.
+   - Deleting the lab: the typed `yes` that `lab.sh down` reads from `/dev/tty`. It stops pipes and flags, not a program that drives a pseudo-terminal.
+   - Breaking a VM: the Multipass snapshot. Restoring one needs the user's confirmation.
+   Use the Edit and Write tools for file changes, not `python3` from the shell.
 
 ## 9. Coding conventions
 
