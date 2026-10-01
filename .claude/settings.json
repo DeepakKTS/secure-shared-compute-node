@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make:*)",
+      "Bash(ansible:*)",
+      "Bash(ansible-playbook:*)",
+      "Bash(ansible-lint:*)",
+      "Bash(ansible-galaxy:*)",
+      "Bash(yamllint:*)",
+      "Bash(shellcheck:*)",
+      "Bash(ruff:*)",
+      "Bash(pytest:*)",
+      "Bash(python3:*)",
+      "Bash(multipass list:*)",
+      "Bash(multipass info:*)",
+      "Bash(multipass exec:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git log:*)",
+      "Bash(ssh:*)"
+    ],
+    "ask": [
+      "Bash(multipass delete:*)",
+      "Bash(multipass purge:*)",
+      "Bash(git push:*)",
+      "Bash(git reset:*)",
+      "Bash(git rebase:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)"
+    ],
+    "deny": [
+      "Read(./.lab/keys/**)",
+      "Bash(git push --force:*)",
+      "Bash(rm -rf /:*)"
+    ]
+  }
+}
