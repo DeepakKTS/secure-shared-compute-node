@@ -6,8 +6,9 @@ and build output, and writes into .lab/keys or tracked files (docs/AUTONOMY.md,
 Claude Code sends the tool call as JSON on stdin. Exit 0 lets the command
 run. Exit 2 blocks it, and stderr tells Claude why. The settings entry turns
 any other exit (a crash, a missing interpreter) into exit 2 as well, so the
-hook fails closed. Written for Python 3.9 and later, because it runs under
-whatever python3 the host has, not the repo's .venv.
+hook fails closed. It runs under /usr/bin/python3 (3.9 on macOS, 3.12 on
+Ubuntu 24.04), not the repo's .venv or whatever python3 is first on PATH, so
+it is written for Python 3.9 and later.
 
 The hook never runs the command; it reads the text.
 - Delete commands: rm, unlink, shred, truncate, find with -delete, git clean

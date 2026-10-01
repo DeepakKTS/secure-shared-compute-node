@@ -17,6 +17,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 SETTINGS = json.loads((ROOT / ".claude" / "settings.json").read_text())
+INTERPRETER = "/usr/bin/python3"
 
 # The two slips, exactly as the Bash tool ran them (P2.5 and P2.7 sessions).
 SLIP_1 = r"""cd /Users/deepakzedler/Downloads/secure-shared-compute-node && grep -nE "^#|^\|" docs/VERSIONS.md | head -60; rm -rf /dev/null 2>/dev/null; ssh -F .lab/ssh_config -o ControlPath=none ssc-node 'rm -rf /tmp/tmp.HehpnjiNb0'"""  # noqa: E501
@@ -157,11 +158,15 @@ def hook_command() -> str:
 
 
 def run_hook(
-    root: Path, stdin: str, env: dict[str, str] | None = None
+    root: Path, stdin: str, env: dict[str, str] | None = None, interpreter: str | None = None
 ) -> subprocess.CompletedProcess:
+    """Run the registered hook command; `interpreter` swaps out /usr/bin/python3."""
     base = {"PATH": os.environ["PATH"], "CLAUDE_PROJECT_DIR": str(root)}
+    command = hook_command()
+    if interpreter:
+        command = command.replace(INTERPRETER, interpreter, 1)
     return subprocess.run(
-        ["/bin/bash", "-c", hook_command()],
+        ["/bin/bash", "-c", command],
         input=stdin,
         env={**base, **(env or {})},
         capture_output=True,
@@ -222,19 +227,28 @@ def test_bad_input_blocks(repo: Path, stdin: str) -> None:
     assert run_hook(repo, stdin).returncode == 2
 
 
+def test_hooks_use_the_system_python() -> None:
+    # A fixed interpreter, not whatever python3 is first on PATH.
+    for event in ("PreToolUse", "PostToolUse", "PostToolUseFailure"):
+        for entry in SETTINGS["hooks"][event]:
+            for hook in entry["hooks"]:
+                assert hook["command"].startswith(INTERPRETER + " "), (event, hook["command"])
+
+
 def test_a_crashing_interpreter_blocks(repo: Path, tmp_path: Path) -> None:
-    # Fail closed: python3 exits 1 here, as on an uncaught error.
+    # Fail closed: the interpreter exits 1 here, as on an uncaught error.
     stub = tmp_path / "python3"
     stub.write_text("#!/bin/sh\nexit 1\n")
     stub.chmod(0o755)
-    result = run_hook(repo, payload("ls", repo), env={"PATH": f"{tmp_path}:/usr/bin:/bin"})
+    result = run_hook(repo, payload("ls", repo), interpreter=str(stub))
     assert result.returncode == 2
     assert "hook failed (exit 1)" in result.stderr
 
 
 def test_a_missing_interpreter_blocks(repo: Path, tmp_path: Path) -> None:
-    result = run_hook(repo, payload("ls", repo), env={"PATH": str(tmp_path)})
+    result = run_hook(repo, payload("ls", repo), interpreter=str(tmp_path / "no-python3"))
     assert result.returncode == 2
+    assert "hook failed (exit 127)" in result.stderr
 
 
 def test_a_missing_hook_script_blocks(tmp_path: Path) -> None:
