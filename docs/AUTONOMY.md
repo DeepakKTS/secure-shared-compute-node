@@ -55,6 +55,7 @@ Both stray deletes happened late in very long sessions. So a session does at mos
 Both stray deletes were extra pieces added to a call that was doing something else. These rules make that harder to do and easier to spot.
 
 - One purpose per Bash call. No trailing cleanup after other commands; cleanup is its own call, or part of a fixed script.
+- Search code with the built-in Grep tool, not `grep` in Bash. The delete guard reads every Bash command's text, so a `grep` for a delete word (as in a review of the hook itself) is blocked; the Grep tool is not a Bash call. Some sessions have no Grep tool (the one on 2026-10-01 did not); then read the file with the Read tool, which the guard does not see either, instead of falling back to Bash `grep`.
 - Do not hide errors with `2>/dev/null` unless the command needs it, and then say why in the call's description. A hidden error is how a mistake goes unnoticed.
 - Any temp work on a VM goes through a fixed script in the repo that runs on the VM. It makes its temp directory with `mktemp -d` and removes it with a `trap` on exit, on the VM side. No ad-hoc temp files over `ssh`, and no cleanup typed by hand afterwards.
 
