@@ -1,5 +1,7 @@
 .lab/
 inventory/lab.yml
+# gen_inventory.py writes here, then renames; a crash leaves lab IPs in it.
+inventory/.lab.yml.tmp
 *.retry
 .venv/
 .ansible/
@@ -7,4 +9,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.vault
+# Ansible Vault password files. This project keeps its vault password at
+# .lab/vault_pass, which .lab/ already covers; these catch stray copies.
+.vault_pass*
+.vault-pass*
 .DS_Store

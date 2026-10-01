@@ -4,9 +4,11 @@ versions) and 9 (ask before destructive actions). These need no VMs."""
 import configparser
 import json
 import re
+import subprocess
 import tomllib
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -87,10 +89,39 @@ def test_ansible_cfg_uses_generated_inventory_file() -> None:
     assert cfg["defaults"]["collections_path"] == ".ansible/collections"
 
 
-def test_secret_and_generated_paths_are_gitignored() -> None:
-    ignored = set((ROOT / ".gitignore").read_text().split())
-    for path in (".lab/", "inventory/lab.yml", ".venv/", ".ansible/"):
-        assert path in ignored, f"{path} missing from .gitignore"
+# Real paths that hold keys, lab IPs or passwords. Ask git, not the file text.
+SECRET_PATHS = (
+    ".lab/keys/ssc_admin_ed25519",
+    ".lab/keys/ssc_admin_ed25519.pub",
+    ".lab/cloud-init.yaml",
+    ".lab/ssh_config",
+    ".lab/known_hosts",
+    ".lab/vault_pass",
+    ".vault_pass",
+    "inventory/lab.yml",
+    "inventory/.lab.yml.tmp",
+    ".venv/bin/python",
+    ".ansible/collections/x",
+)
+
+
+def git(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=False)
+
+
+@pytest.mark.parametrize("path", SECRET_PATHS)
+def test_secret_and_generated_paths_are_gitignored(path: str) -> None:
+    assert git("check-ignore", "-q", "--no-index", path).returncode == 0, f"{path} not ignored"
+
+
+def test_example_inventory_is_not_ignored() -> None:
+    assert git("check-ignore", "-q", "--no-index", "inventory/lab.yml.example").returncode == 1
+
+
+def test_no_lab_file_is_tracked() -> None:
+    tracked = git("ls-files", "--", ".lab", "inventory/lab.yml", "inventory/.lab.yml.tmp")
+    assert tracked.returncode == 0
+    assert tracked.stdout == "", f"tracked lab files: {tracked.stdout}"
 
 
 def test_claude_permissions_guard_destructive_actions() -> None:
