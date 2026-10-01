@@ -18,3 +18,4 @@ One line per task: date, task ID, commit, what was verified. "built, not verifie
 - 2026-10-01 P0.8 337d336 verified: lab_check.yml ran from make lab-up on all 3 VMs with changed=0 and failed=0; BTF present on all 3
 - 2026-10-01 Phase 0 exit 337d336 `make deps && make lint && make test && make lab-up && make ping` all exit 0
 - 2026-10-01 P2.0 (this commit) `scripts/lab.sh snapshot pre-harden` exit 0; `multipass list --snapshots` shows pre-harden on all 3 VMs, all Running again afterwards. Taken right after the Phase 0 exit check, before Phase 1 installs Lynis, so a restore also removes Lynis
+- 2026-10-01 P1.1 8003cfc verified on ssc-node: audit.yml with audit_label=before fetched .lab/lynis/before/ssc-node-lynis-report.dat (lynis_version=3.1.7, UTC report times); a bad label fails before any change; a second run changes only the fetched report; make lint and make test pass
