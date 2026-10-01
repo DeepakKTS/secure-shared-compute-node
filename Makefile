@@ -106,10 +106,13 @@ baseline: check-venv ## Lynis on the fresh node -> results/lynis-before.json
 	$(ANSIBLE_PLAYBOOK) playbooks/audit.yml -e audit_label=before
 	$(PY) scripts/parse_lynis.py .lab/lynis/before/ssc-node-lynis-report.dat --label before
 
-# ---- Later phases (stubs until built) ----------------------------------------
+# ---- Phase 2: hardening ------------------------------------------------------
 
-harden: ## Hardening and isolation roles
-	@$(call todo,2)
+# TAGS=<role> runs one role, for example `make harden TAGS=base`.
+harden: check-venv ## Hardening and isolation roles
+	$(ANSIBLE_PLAYBOOK) playbooks/harden.yml $(if $(TAGS),--tags $(TAGS),)
+
+# ---- Later phases (stubs until built) ----------------------------------------
 
 idempotency: ## Run harden twice; fail if the second run changes anything
 	@$(call todo,2)

@@ -1,0 +1,24 @@
+# Managed by Ansible (role: base). Do not edit by hand.
+# Ubuntu 24.04's default chrony.conf, with the pools and makestep from
+# inventory/group_vars. See roles/base/README.md.
+
+confdir /etc/chrony/conf.d
+
+{% for pool in base_ntp_pools %}
+pool {{ pool.name }} iburst maxsources {{ pool.maxsources }}
+{% endfor %}
+
+sourcedir /run/chrony-dhcp
+sourcedir /etc/chrony/sources.d
+
+keyfile /etc/chrony/chrony.keys
+driftfile /var/lib/chrony/chrony.drift
+ntsdumpdir /var/lib/chrony
+logdir /var/log/chrony
+maxupdateskew 100.0
+rtcsync
+
+# Step the clock when the offset is above the threshold (lab: on every update).
+makestep {{ base_chrony_makestep }}
+
+leapsectz right/UTC

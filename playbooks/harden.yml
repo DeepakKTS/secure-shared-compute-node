@@ -1,0 +1,10 @@
+---
+# Hardening and isolation, run by `make harden` (TAGS=<role> runs one role).
+# Where each role runs is set in docs/PLAN.md, Phase 2. Roles are added here
+# one Phase 2 task at a time.
+- name: Base settings on every lab VM
+  hosts: all
+  roles:
+    - role: base
+      become: true
+      tags: [base]

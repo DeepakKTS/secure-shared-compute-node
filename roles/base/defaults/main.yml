@@ -1,0 +1,72 @@
+---
+# Packages every lab VM needs. chrony replaces systemd-timesyncd, so every
+# VM keeps time the same way (scenario timing depends on it).
+base_packages:
+  - chrony
+  - needrestart
+
+# UTC on every VM: logs and alert times line up without zone math, and
+# tools that print local time with no zone (Lynis) stay correct.
+base_timezone: Etc/UTC
+
+# NTP pools, the Ubuntu defaults. DASH would point these at campus NTP.
+base_ntp_pools:
+  - {name: ntp.ubuntu.com, maxsources: 4}
+  - {name: 0.ubuntu.pool.ntp.org, maxsources: 1}
+  - {name: 1.ubuntu.pool.ntp.org, maxsources: 1}
+  - {name: 2.ubuntu.pool.ntp.org, maxsources: 2}
+
+# "1 -1": step the clock whenever it is more than 1 s off. VM clocks can lag
+# by minutes after the host laptop sleeps, and the Ubuntu default ("1 3",
+# only in the first three updates) would slew that back slowly.
+base_chrony_makestep: "1 -1"
+
+# Reverse path filter: 1 (strict) drops packets whose source address would
+# not be routed back out the same interface, which stops spoofed sources.
+# Use 2 (loose) on multi-homed servers with asymmetric routing.
+base_rp_filter: 1
+
+# Kernel settings, each with the reason it is set. Two Lynis suggestions are
+# left out on purpose: kernel.modules_disabled=1 blocks loading any module
+# until reboot (nftables and fail2ban need modules), and kernel.core_uses_pid
+# only changes core file names. rp_filter is set from base_rp_filter.
+base_sysctl:
+  # Hide kernel addresses from every user, so kernel exploits must guess.
+  kernel.kptr_restrict: 2
+  # Kernel log only for root; it can leak addresses and hardware details.
+  kernel.dmesg_restrict: 1
+  # A process may only ptrace its own children, so one user's compromised
+  # process cannot read another process's memory.
+  kernel.yama.ptrace_scope: 1
+  # No unprivileged eBPF, and harden the BPF JIT against spraying.
+  kernel.unprivileged_bpf_disabled: 1
+  net.core.bpf_jit_harden: 2
+  # No magic SysRq key combinations from a console.
+  kernel.sysrq: 0
+  # Users cannot make the kernel load TTY line discipline modules.
+  dev.tty.ldisc_autoload: 0
+  # No core dumps from setuid programs (they can hold secrets).
+  fs.suid_dumpable: 0
+  # Shared world-writable dirs (/tmp) hold many users' files. These stop
+  # one user from tricking another into following or opening a planted file.
+  fs.protected_hardlinks: 1
+  fs.protected_symlinks: 1
+  fs.protected_fifos: 2
+  fs.protected_regular: 2
+  # A server is not a router: ignore ICMP redirects and source routes, and
+  # do not send redirects.
+  net.ipv4.conf.all.accept_redirects: 0
+  net.ipv4.conf.default.accept_redirects: 0
+  net.ipv6.conf.all.accept_redirects: 0
+  net.ipv6.conf.default.accept_redirects: 0
+  net.ipv4.conf.all.send_redirects: 0
+  net.ipv4.conf.default.send_redirects: 0
+  net.ipv4.conf.all.accept_source_route: 0
+  net.ipv4.conf.default.accept_source_route: 0
+  net.ipv6.conf.all.accept_source_route: 0
+  net.ipv6.conf.default.accept_source_route: 0
+  # Log packets with impossible source addresses (a sign of spoofing).
+  net.ipv4.conf.all.log_martians: 1
+  net.ipv4.conf.default.log_martians: 1
+  # Keep accepting connections during a SYN flood.
+  net.ipv4.tcp_syncookies: 1

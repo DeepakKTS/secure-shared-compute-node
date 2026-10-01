@@ -1,0 +1,66 @@
+---
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ base_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  environment:
+    NEEDRESTART_MODE: a
+
+# Without this, needrestart asks which services to restart after an upgrade,
+# and an unattended upgrade would leave patched libraries unused.
+- name: Make needrestart restart services without asking
+  ansible.builtin.template:
+    src: needrestart.conf.j2
+    dest: /etc/needrestart/conf.d/50-ssc.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Set the timezone
+  community.general.timezone:
+    name: "{{ base_timezone }}"
+
+# The whole file, not a conf.d drop-in: Ubuntu's chrony.conf reads conf.d
+# near the top and sets "makestep 1 3" further down, which would win.
+# Validation runs chronyd outside its AppArmor profile, which only lets it
+# read its own paths, not Ansible's temp file. `chronyd -p` only parses the
+# file and exits.
+- name: Configure chrony
+  ansible.builtin.template:
+    src: chrony.conf.j2
+    dest: /etc/chrony/chrony.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/bin/aa-exec -p unconfined -- /usr/sbin/chronyd -p -f %s
+  notify: Restart chrony
+
+- name: Keep chrony running
+  ansible.builtin.systemd_service:
+    name: chrony
+    enabled: true
+    state: started
+
+# A sysctl.d file, applied by systemd-sysctl, so the values also hold after
+# a reboot. A file is needed for the rp_filter glob (net.ipv4.conf.*), which
+# sysctl -w cannot set. systemd-sysctl applies files in name order across
+# /etc, /run and /usr/lib, and the last value wins: Ubuntu's
+# 99-protect-links.conf sets fs.protected_fifos=1, so this file is named to
+# sort after every vendor file.
+- name: Write kernel hardening settings
+  ansible.builtin.template:
+    src: sysctl-hardening.conf.j2
+    dest: /etc/sysctl.d/99-zz-ssc-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply sysctl settings
+
+# The first version used this name, which vendor files override.
+- name: Remove the old kernel settings file
+  ansible.builtin.file:
+    path: /etc/sysctl.d/60-ssc-hardening.conf
+    state: absent
+  notify: Apply sysctl settings

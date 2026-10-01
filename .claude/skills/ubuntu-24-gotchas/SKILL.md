@@ -42,6 +42,8 @@ Verify each on the lab VM before relying on it; record anything that differs.
 ## chrony
 - Install chrony on all VMs so scenario timing uses one time source.
 - The default `makestep 1 3` only steps the clock in the first three updates after start. After the host laptop sleeps, a VM clock can lag by minutes, and slewing it back is slow. In the lab, set `makestep 1 -1` (step on any offset over 1 s). Verify after a sleep in Phase 2.
+- A `conf.d` drop-in cannot change `makestep`. The noble `chrony.conf` reads `confdir /etc/chrony/conf.d` near the top and sets `makestep 1 3` further down. Template the whole file (roles/base does).
+- chronyd runs under an AppArmor profile (`/usr/sbin/chronyd`) that only lets it read its own paths. `validate: chronyd -p -f %s` then fails with "Permission denied" on Ansible's temp file, even as root. Validate with `/usr/bin/aa-exec -p unconfined -- /usr/sbin/chronyd -p -f %s`; `-p` only parses and exits. Expect the same for other confined daemons.
 
 ## systemd user slices
 - `user-.slice.d/` drop-ins apply to every `user-<uid>.slice`, including the admin.

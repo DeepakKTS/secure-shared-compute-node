@@ -9,7 +9,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 STUBS = {
-    "harden": 2,
     "idempotency": 2,
     "verify": 2,
     "monitoring": 4,
@@ -87,3 +86,12 @@ def test_baseline_audits_then_parses_a_fresh_report() -> None:
         ".venv/bin/python scripts/parse_lynis.py .lab/lynis/before/ssc-node-lynis-report.dat"
         " --label before",
     ]
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [((), ""), (("TAGS=base",), " --tags base"), (("TAGS=base,users",), " --tags base,users")],
+)
+def test_harden_runs_the_playbook_with_optional_tags(args: tuple[str, ...], expected: str) -> None:
+    steps = make("-n", "harden", *args).stdout.splitlines()
+    assert steps[-1].rstrip() == f".venv/bin/ansible-playbook playbooks/harden.yml{expected}"

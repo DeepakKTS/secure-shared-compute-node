@@ -1,0 +1,11 @@
+---
+- name: Restart chrony
+  ansible.builtin.systemd_service:
+    name: chrony
+    state: restarted
+
+# systemd-sysctl applies every sysctl.d file, including glob keys.
+- name: Apply sysctl settings
+  ansible.builtin.systemd_service:
+    name: systemd-sysctl
+    state: restarted

@@ -1,0 +1,14 @@
+# Managed by Ansible (role: base). Do not edit by hand.
+# Why each value is set: roles/base/defaults/main.yml.
+# The 99-zz- name makes this file apply after every vendor sysctl.d file.
+# Change these values in inventory/group_vars, not in /etc/sysctl.conf.
+
+{% for key, value in base_sysctl | dictsort %}
+{{ key }} = {{ value }}
+{% endfor %}
+
+# The kernel uses the larger of "all" and the per-interface value, and
+# Ubuntu sets every interface to 2, so the glob is needed for strict mode.
+net.ipv4.conf.all.rp_filter = {{ base_rp_filter }}
+net.ipv4.conf.default.rp_filter = {{ base_rp_filter }}
+net.ipv4.conf.*.rp_filter = {{ base_rp_filter }}
