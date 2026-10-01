@@ -7,7 +7,7 @@ Current phase: **0**
 Milestone A = every item not marked (Milestone B). See `docs/PLAN.md`.
 
 ## Phase 0: Bootstrap
-- [ ] P0.1 Makefile skeleton with all targets from CLAUDE.md section 7 (stubs exit non-zero)
+- [x] P0.1 Makefile skeleton with all targets from CLAUDE.md section 7 (stubs exit non-zero)
 - [ ] P0.2 ansible.cfg, requirements.yml (pinned collections), pyproject.toml + uv.lock + .python-version (pinned dev deps), .yamllint, .ansible-lint, .gitignore
 - [ ] P0.3 scripts/lab.sh up/down/status/snapshot with host OS, arch and disk check, admin key generation, cloud-init template (F-01, F-03)
 - [ ] P0.4 scripts/gen_inventory.py with lab_cidr, lab_controller_ip, .lab/ssh_config, unit tests (F-02)
