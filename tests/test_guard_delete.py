@@ -16,13 +16,51 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 SETTINGS = json.loads((ROOT / ".claude" / "settings.json").read_text())
 
+# The two slips, exactly as the Bash tool ran them (P2.5 and P2.7 sessions).
+SLIP_1 = r"""cd /Users/deepakzedler/Downloads/secure-shared-compute-node && grep -nE "^#|^\|" docs/VERSIONS.md | head -60; rm -rf /dev/null 2>/dev/null; ssh -F .lab/ssh_config -o ControlPath=none ssc-node 'rm -rf /tmp/tmp.HehpnjiNb0'"""  # noqa: E501
+SLIP_2 = r"""cd /Users/deepakzedler/Downloads/secure-shared-compute-node && ssh -F .lab/ssh_config -o ControlPath=none ssc-node 'dpkg-query -W -f="\${Package} \${Version}\n" openssl libssl3t64; echo "== dpkg term log: errors or exec failures"; sudo grep -ciE "can.t exec|permission denied|error|failed" /var/log/unattended-upgrades/unattended-upgrades-dpkg.log; sudo grep -iE "can.t exec|permission denied|error|failed" /var/log/unattended-upgrades/unattended-upgrades-dpkg.log | cut -c1-200 | head -5; echo "== u-u log tail"; sudo tail -4 /var/log/unattended-upgrades/unattended-upgrades.log | cut -c1-250; echo "== still upgradable from security?"; sudo unattended-upgrade --dry-run --debug 2>&1 | grep -E "^(Packages that will be upgraded|No packages found)"; echo "== dpkg audit (half-configured packages):"; sudo dpkg --audit; echo "(end audit)"; ls /var/run/reboot-required 2>&1; findmnt -no OPTIONS /tmp'; rm -f /dev/null.bak 2>/dev/null; true"""  # noqa: E501
+
 BLOCKED = [
-    # The two slips from the P2.5 and P2.7 sessions, alone and as they ran.
-    "rm -rf /dev/null 2>/dev/null",
-    'cd /repo && grep -nE "^#" docs/VERSIONS.md | head -60; rm -rf /dev/null 2>/dev/null; '
-    "ssh -F .lab/ssh_config -o ControlPath=none ssc-node 'rm -rf /tmp/tmp.HehpnjiNb0'",
-    "ssh -F .lab/ssh_config -o ControlPath=none ssc-node 'dpkg-query -W openssl'; "
-    "rm -f /dev/null.bak 2>/dev/null; true",
+    pytest.param(SLIP_1, id="slip1-as-ran"),
+    pytest.param(SLIP_2, id="slip2-as-ran"),
+    # The delete part of each slip on its own.
+    pytest.param("rm -rf /dev/null 2>/dev/null", id="slip1-alone"),
+    pytest.param("rm -f /dev/null.bak 2>/dev/null; true", id="slip2-alone"),
+    # git clean, any flags; -x would reach the ignored .lab/keys.
+    "git clean -fdx",
+    "git clean -n",
+    "git clean -fdx .lab",
+    "git -C . clean -fd",
+    "bash -c 'git clean -fdx'",
+    # shred and truncate.
+    "shred -u secrets.txt",
+    "shred -u .lab/keys/admin_ed25519",
+    "truncate -s 0 README.md",
+    "truncate -s 0 .lab/keys/admin_ed25519",
+    # rsync with a delete option.
+    "rsync -a --delete src/ ./",
+    "rsync -a --delete .lab/a/ ssc-node:/tmp/x/",
+    "rsync -a --remove-source-files README.md .lab/x/",
+    "rsync -a --delete-after .lab/a/ docs/",
+    # mv onto /dev/null.
+    "mv README.md /dev/null",
+    "mv -t /dev/null README.md",
+    "mv --target-directory=/dev/null README.md",
+    "sudo mv README.md /dev/null",
+    "bash -c 'mv README.md /dev/null'",
+    # Deletes written as code.
+    "python3 -c \"import os; os.remove('README.md')\"",
+    "python3 -c 'import shutil; shutil.rmtree(\".lab\")'",
+    "python3 -c 'from pathlib import Path; Path(\"x\").unlink()'",
+    "perl -e 'unlink \"README.md\"'",
+    "perl -MFile::Path=rmtree -e 'rmtree(\"x\")'",
+    # > redirects into .lab/keys, onto tracked files, or to unknown paths.
+    "echo x > .lab/keys/admin_ed25519",
+    "cat /dev/null > README.md",
+    "echo x >> ansible.cfg",
+    "printf 'a: 1\\n' > inventory/group_vars/all.yml",
+    f"echo x > {ROOT}/Makefile",
+    "echo x > $HOME/notes.txt",
     # Chained, with a target outside the allowed paths.
     "git status && rm -f README.md",
     # Outside .lab/ and build output, or .lab itself and its keys.
@@ -68,6 +106,21 @@ ALLOWED = [
     "find .lab/lynis -name '*.dat' -delete",
     # Chained, with every target allowed. (AUTONOMY.md still says: do not chain.)
     "git status && rm -f .lab/lynis/old.json",
+    # The new delete commands with allowed targets.
+    "git clean -fd .lab/lynis",
+    "shred -u .lab/lynis/old.dat",
+    "truncate -s 0 .lab/audit/bash.log",
+    "rsync -a --delete .lab/lynis/before/ .lab/lynis/old/",
+    # mv and redirects that delete or overwrite nothing protected.
+    "mv .lab/a.json .lab/b.json",
+    "git mv docs/a.md docs/b.md",
+    "mv .lab/a .lab/b 2>/dev/null",
+    "make lint > /private/tmp/lint.log 2>&1",
+    "echo hi > /dev/null",
+    "echo x > .lab/audit/note.txt",
+    "ls 2>&1 | head",
+    "echo a >&2",
+    "python3 -c 'print(1)'",
 ]
 
 

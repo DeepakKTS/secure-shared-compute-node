@@ -172,7 +172,7 @@ Targets for phases not built yet print "not implemented (Phase N)" and exit non-
    - Force pushes to `main`: the GitHub ruleset on `main`. Check that it is active with `gh api repos/DeepakKTS/secure-shared-compute-node/rules/branches/main`.
    - Deleting the lab: the typed `yes` that `lab.sh down` reads from `/dev/tty`. It stops pipes and flags, not a program that drives a pseudo-terminal.
    - Breaking a VM: the Multipass snapshot. Restoring one needs the user's confirmation.
-   - Deleting files on the host: the PreToolUse hook `.claude/hooks/guard_delete.py`, which blocks deletes outside `.lab/` and build output and fails closed (docs/AUTONOMY.md). It reads the command text, so a program the command starts can still delete; it guards Claude's own commands.
+   - Deleting files on the host: the PreToolUse hook `.claude/hooks/guard_delete.py`, which blocks deletes outside `.lab/` and build output, and redirects into `.lab/keys` or onto tracked files, and fails closed (docs/AUTONOMY.md). It reads the command text, so a program the command starts can still delete; it guards Claude's own commands.
    Use the Edit and Write tools for file changes, not `python3` from the shell.
 10. When the owner runs the TODO loop, follow `docs/AUTONOMY.md`: what each cycle verifies, when to snapshot, and when to stop and wait for the owner.
 
