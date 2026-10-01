@@ -19,6 +19,8 @@ CODE_SUFFIXES = {".sh", ".py", ".yml", ".yaml", ".j2", ".tmpl", ".cfg"}
 # rm with its flags, then the rest of that command (up to ; & | ' or the end).
 RM = re.compile(r"(?<![\w.-])rm((?:\s+-\S+)+)\s+([^;&|'\n]*)")
 GUARDED = re.compile(r"\$+\{\w+:\?")
+# Files that hold delete commands only as sample text, never run.
+SAMPLE_TEXT_FILES = {Path(__file__).name, "test_guard_delete.py"}
 
 
 def recursive(flags: str) -> bool:
@@ -69,7 +71,7 @@ def code_files() -> list[Path]:
     files = [ROOT / name for name in tracked]
     return [
         f for f in files
-        if f.is_file() and f.name != Path(__file__).name
+        if f.is_file() and f.name not in SAMPLE_TEXT_FILES
         and (f.suffix in CODE_SUFFIXES or f.name == "Makefile")
     ]  # fmt: skip
 
