@@ -2,7 +2,7 @@
 
 Work top to bottom. Check a box only when its feature's acceptance check in `docs/FEATURES.md` passes. Put the verification command in the commit body.
 
-Current phase: **0**
+Current phase: **1**
 
 Milestone A = every item not marked (Milestone B). See `docs/PLAN.md`.
 
