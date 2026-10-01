@@ -76,6 +76,7 @@ def test_replies_dhcp_and_neighbour_discovery_are_allowed(host) -> None:
         assert rule in chain, rule
 
 
+@pytest.mark.changes_state
 @pytest.mark.usefixtures("attacker_unbanned")
 def test_scan_from_the_attacker_finds_only_ssh(host) -> None:
     target = variables(host)["ansible_host"]
@@ -93,6 +94,7 @@ def test_closed_port_is_dropped_not_refused(host, port: int) -> None:
     assert probe(variables(host)["ansible_host"], port) == TIMED_OUT
 
 
+@pytest.mark.changes_state
 def test_new_listener_is_local_only(host) -> None:
     # A bare socket under a throwaway user: it serves nothing, even if the
     # firewall were open.

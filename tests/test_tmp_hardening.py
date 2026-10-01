@@ -47,6 +47,7 @@ def test_fstab_holds_the_options_for_boot(host, path: str) -> None:
     assert HARDENED <= set(fields.split(",")), fields
 
 
+@pytest.mark.changes_state
 @pytest.mark.parametrize("path", ["/tmp", "/dev/shm"])
 def test_user_cannot_run_a_binary_from(host, path: str) -> None:
     # What a dropper does: write a binary to a world-writable path and run it.
@@ -60,6 +61,7 @@ def test_user_cannot_run_a_binary_from(host, path: str) -> None:
     assert "Permission denied" in result.stderr
 
 
+@pytest.mark.changes_state
 def test_apt_preconfigure_runs_config_scripts_outside_tmp(host) -> None:
     # apt runs dpkg-preconfigure before it unpacks packages. If debconf ever
     # extracted config scripts to /tmp again, noexec would stop them. Build a

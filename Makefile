@@ -38,7 +38,7 @@ SH_FILES := $(shell find scripts simulate -type f -name '*.sh' 2>/dev/null)
 # `make all` cannot report success before the work exists.
 todo = echo "make $@: not implemented yet (Phase $(1), see TODO.md)" >&2; exit 2
 
-.PHONY: help deps check-venv lab-up lab-down lab-status ping lint test audit-log
+.PHONY: help deps check-venv lab-up lab-down lab-status ping lint test audit-log demo
 .PHONY: baseline harden idempotency monitoring detection verify audit simulate report all
 
 help: ## List targets
@@ -101,6 +101,11 @@ test: check-venv ## Unit tests that need no VMs
 # another UTC day; ALL=1 also lists the commands that ran.
 audit-log: check-venv ## Show today's Bash commands the guard hook blocked
 	$(PY) scripts/show_bash_log.py $(if $(DATE),--date $(DATE),) $(if $(ALL),--all,)
+
+# Read-only: -B writes no __pycache__, and tests/test_demo.py checks that a
+# run leaves the repo and the VMs as they were.
+demo: check-venv ## Read-only summary of the live lab (changes nothing)
+	$(PY) -B scripts/demo.py
 
 # ---- Phase 1: baseline audit -------------------------------------------------
 

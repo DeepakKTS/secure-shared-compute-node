@@ -97,6 +97,10 @@ def test_harden_runs_the_playbook_with_optional_tags(args: tuple[str, ...], expe
     assert steps[-1].rstrip() == f".venv/bin/ansible-playbook playbooks/harden.yml{expected}"
 
 
+def test_demo_runs_the_script_without_writing_bytecode() -> None:
+    assert make("-n", "demo").stdout.splitlines()[-1] == ".venv/bin/python -B scripts/demo.py"
+
+
 @pytest.mark.parametrize(
     ("args", "expected"), [((), ""), (("HOSTS=node",), " -e reboot_hosts=node")]
 )

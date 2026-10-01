@@ -48,4 +48,5 @@ addopts = "-ra --strict-markers"
 empty_parameter_set_mark = "fail_at_collect"
 markers = [
     "lab: needs the lab VMs; runs against inventory/lab.yml (not in `make test` or CI)",
+    "changes_state: changes VM state while it runs (a test ban, a temp file, a probe unit, a log file); `make demo` leaves it out",
 ]

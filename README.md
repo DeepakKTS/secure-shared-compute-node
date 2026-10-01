@@ -25,6 +25,8 @@ make deps
 make all
 ```
 
+`make demo` prints a short summary of the live lab: VM state, the Lynis numbers in `results/`, the key SSH, firewall, fail2ban, `/tmp` and sudo settings on the node, and one pass or fail line from the Phase 2 checks. It only reads. It leaves out the tests that change VM state (a test ban, a temp file), and a test checks that a run leaves the repo and the VMs as they were.
+
 ### Low-RAM laptops: `LAB_PROFILE=small`
 
 `make lab-up LAB_PROFILE=small` creates two VMs instead of three. The node also runs the monitoring stack, and the inventory puts it in both the `node` and `monitor` groups. This is weaker: anyone with root on the node can stop its monitoring, and the silence looks like "all clear". Use it only when the host cannot run three VMs. Pass `LAB_PROFILE=small` on every `make lab-up`, or export it in your shell. Running `make all` end to end with it is planned for Milestone B.

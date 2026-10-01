@@ -63,9 +63,10 @@ def test_only_security_origins_are_configured(host) -> None:
     assert "Unattended-Upgrade::Origins-Pattern" not in apt_config(host)
 
 
+@pytest.mark.changes_state
 def test_unattended_upgrade_uses_only_security_origins(host) -> None:
     # A dry run reads the same configuration the timer run will. No packages
-    # are changed.
+    # are changed, but it writes its log and takes the apt lock.
     with host.sudo():
         out = host.check_output("unattended-upgrade --dry-run --debug 2>&1")
     line = re.search(r"^Allowed origins are: (.*)$", out, re.MULTILINE)

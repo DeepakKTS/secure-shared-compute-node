@@ -108,6 +108,7 @@ def test_controller_and_monitor_are_ignored_attacker_is_not(host) -> None:
     assert lab_hosts.address("ssc-attacker") not in ignored, ignored
 
 
+@pytest.mark.changes_state
 @pytest.mark.usefixtures("attacker_unbanned")
 def test_local_user_cannot_forge_sshd_lines(host) -> None:
     # Any local user can name their process "sshd" and write to syslog. The
@@ -137,6 +138,7 @@ def test_local_user_cannot_forge_sshd_lines(host) -> None:
     assert target not in banned(host)
 
 
+@pytest.mark.changes_state
 @pytest.mark.usefixtures("attacker_unbanned")
 def test_s1_rehearsal_bans_the_attacker_and_blocks_it(host) -> None:
     # What scenario S1 (P6.4) will do: logins as a user that does not exist,

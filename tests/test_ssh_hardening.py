@@ -60,6 +60,7 @@ def test_full_sshd_config_is_valid(host) -> None:
         assert host.run("sshd -t").rc == 0
 
 
+@pytest.mark.changes_state
 @pytest.mark.usefixtures("attacker_unbanned")
 @pytest.mark.parametrize("user", ["alice", "root"])
 def test_password_login_from_the_attacker_is_refused(host, user: str) -> None:
