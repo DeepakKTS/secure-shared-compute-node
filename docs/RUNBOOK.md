@@ -14,6 +14,7 @@ Status: outline. Fill in exact commands during Phase 8, and test each one agains
 ## 3. Contain
 - Stop the process without destroying evidence (SIGSTOP first, then collect)
 - Lock the user account and kill sessions
+- Check the user's crontab and at queue too: those jobs run outside the user slice and keep running after the sessions end
 - Keep egress block in place; confirm no other host shows the same pattern
 
 ## 4. Collect evidence

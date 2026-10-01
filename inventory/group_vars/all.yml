@@ -8,7 +8,8 @@ users_research:
   - name: bob
 users_research_group: ssc-users
 
-# Who may SSH to the node, in addition to lab_cidr. Set to your host's lab IP range.
+# Extra CIDRs allowed to SSH in. lab_cidr and lab_controller_ip are always allowed;
+# both come from the generated inventory. Leave empty in the lab; set campus or VPN ranges on DASH.
 firewall_admin_cidrs: []
 firewall_egress_mode: log_and_drop      # log_and_drop | log_only
 firewall_mining_ports: [3333, 3334, 4444, 5555, 7777, 14444]   # commonly seen stratum ports; a starting list, not complete
@@ -17,11 +18,13 @@ fail2ban_maxretry: 3
 fail2ban_findtime: 10m
 fail2ban_bantime: 1h
 
-resource_limits_cpu_quota: "100%"       # one core per user in a 2 vCPU lab
+resource_limits_cpu_quota: "100%"       # one core per user in a 2 vCPU lab; keep above detection_cpu_threshold
 resource_limits_memory_max: 768M
 resource_limits_tasks_max: 512
 
-detection_process_allowlist_regex: "^(python3|jupyter.*|node_exporter|process-exporter|falco.*|sshd|systemd.*)$"
+# Matched against process-exporter group names "<comm>:<user>". Linux cuts comm to 15 characters,
+# so process-exporter appears as process-exporte.
+detection_process_allowlist_regex: "^(python3|jupyter[^:]*|node_exporter|process-exporte|falco[^:]*|sshd|systemd[^:]*):"
 detection_cpu_threshold: 0.8            # cores, per process group
 detection_cpu_for: 1m                   # lab value; recommend longer for DASH, see ADR 0006
 

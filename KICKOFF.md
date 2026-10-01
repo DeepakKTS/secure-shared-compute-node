@@ -2,11 +2,11 @@
 
 ## 1. Install on your laptop
 - Multipass: https://multipass.run (check the install page for your OS)
-- Python 3.11+ and pipx or uv
+- Python 3.11+ and uv (`make deps` uses it to build `.venv/`)
 - make, git, and the GitHub CLI (`gh`) if you want to create the repo from the terminal
 - Claude Code CLI
 
-Check free RAM. Three VMs need about 5 GB. If you have less, use `LAB_PROFILE=small`.
+Check free RAM and free disk. Three VMs need about 5 GB of RAM. If you have less, use `LAB_PROFILE=small`. A nearly full disk will break the VMs; free space before `make lab-up`.
 
 ## 2. Create the repo
 ```

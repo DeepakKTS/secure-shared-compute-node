@@ -28,7 +28,11 @@
       "Bash(git reset:*)",
       "Bash(git rebase:*)",
       "Bash(curl:*)",
-      "Bash(wget:*)"
+      "Bash(wget:*)",
+      "Bash(make lab-down:*)",
+      "Bash(scripts/lab.sh down:*)",
+      "Bash(./scripts/lab.sh down:*)",
+      "Bash(multipass restore:*)"
     ],
     "deny": [
       "Read(./.lab/keys/**)",

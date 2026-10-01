@@ -26,10 +26,11 @@ roles/<name>/
    - Prometheus rules: validate with `promtool check rules %s` when promtool is on the host
 4. Use handlers for restarts and reloads. Reload over restart where the service supports it.
 5. Packages: `ansible.builtin.apt` with `update_cache: true` and `cache_valid_time: 3600`. Pin versions for components listed in docs/VERSIONS.md.
-6. Downloaded binaries (exporters, Prometheus): use `ansible.builtin.get_url` with `checksum: sha256:<value from the release's checksum file>`. Never download without a checksum.
+6. Downloaded binaries (exporters, Prometheus): use `ansible.builtin.get_url` with `checksum: sha256:<value from the release's checksum file>`. Never download without a checksum. Map `ansible_architecture` to the upstream name (`aarch64` to `arm64`, `x86_64` to `amd64`) and keep one pinned sha256 per architecture in `defaults/main.yml`. The lab VMs are arm64 on Apple Silicon hosts; CI runs on amd64.
 7. Services run as dedicated system users with no login shell, and systemd units include hardening options where they do not break the service: `NoNewPrivileges=yes`, `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`, `ReadWritePaths=` for data dirs.
 8. Secrets never in defaults. Use Ansible Vault or read from `.lab/`.
 9. Tags: every role's tasks tagged with the role name so `make harden TAGS=ssh_hardening` works.
+10. Say which hosts a role runs on in its README. `base` runs everywhere. The access roles (users, ssh_hardening, firewall, fail2ban, auto_updates) run on node and monitor.
 
 ## Verify every change
 ```
@@ -38,4 +39,4 @@ make harden TAGS=<role>
 make idempotency          # second run must be changed=0
 pytest tests/test_<role>.py
 ```
-If you touched SSH or firewall: open a new SSH session as admin before ending the task.
+If you touched SSH or firewall: open a new SSH session as admin before ending the task (`ssh -F .lab/ssh_config -o ControlPath=none ssc-node true`), and check `multipass exec ssc-node -- true` still works.

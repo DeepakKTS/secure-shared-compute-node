@@ -6,6 +6,8 @@ Fill this in during the build. Check each against the upstream release page or a
 |---|---|---|---|
 | Ubuntu Server | 24.04 LTS | | |
 | Multipass | | | |
+| Python (controller) | | | |
+| uv | | | |
 | ansible-core | | | |
 | community.general | | | |
 | ansible.posix | | | |
@@ -18,4 +20,10 @@ Fill this in during the build. Check each against the upstream release page or a
 | Falco | | | |
 | falcosidekick | | | |
 | DCGM exporter (optional) | | | |
-| pytest / testinfra | | | |
+| ansible-lint | | | |
+| yamllint | | | |
+| ruff | | | |
+| shellcheck (shellcheck-py) | | | |
+| pytest | | | |
+| pytest-testinfra | | | |
+| PyYAML | | | |

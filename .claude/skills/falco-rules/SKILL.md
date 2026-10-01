@@ -9,7 +9,9 @@ description: How to install Falco and write, test, and tune custom Falco rules f
 - Use the official falcosecurity apt repository with its signing key. Pin the version in docs/VERSIONS.md.
 - Driver: modern eBPF (`engine.kind: modern_ebpf`). If it fails on the VM kernel, record the error and fall back to the kmod or ebpf driver, then note it in ADR 0002.
 - Custom rules go in `detection/falco/rules/ssc.yaml`, deployed to `/etc/falco/rules.d/`. Do not edit upstream rule files.
-- Output: `json_output: true`, `http_output` enabled, URL pointing at falcosidekick on the monitor. Include hostname in output fields.
+- Output: `json_output: true`, `http_output` enabled, URL pointing at falcosidekick on the monitor. Include hostname, `user.name`, the executable path, and the command line in output fields, so `measure.py` can find a scenario's `run_id`.
+- The lab VMs are arm64 on Apple Silicon hosts. Check that the pinned Falco package exists for the VM architecture.
+- Check which labels falcosidekick sends to Alertmanager in the installed version. If two events can have the same labels, Alertmanager merges them; the direct webhook to alert_receiver avoids that.
 
 ## Rules to write
 Use macros and lists so DASH can tune without rewriting logic.
