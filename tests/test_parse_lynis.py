@@ -57,7 +57,9 @@ def test_missing_required_field_is_refused(key: str) -> None:
         pl.summarize(without(key), "before", SHA)
 
 
-@pytest.mark.parametrize("value", ["", "abc", "-1", "101", "61.5", " 42"])
+@pytest.mark.parametrize(
+    "value", ["", "abc", "-1", "101", "61.5", " 42", "\u0664\u0662", "\u00b2", "0042"]
+)
 def test_bad_hardening_index_is_refused(value: str) -> None:
     with pytest.raises(pl.ReportError):
         pl.summarize(replace("hardening_index", value), "before", SHA)
@@ -126,6 +128,21 @@ def test_cli_missing_report_fails(tmp_path: Path) -> None:
     assert not out.exists()
 
 
+@pytest.mark.parametrize("sha", ["anything-I-like", "abc123", SHA.upper(), f"{SHA}-clean"])
+def test_cli_rejects_a_git_sha_that_is_not_a_commit_id(tmp_path: Path, sha: str) -> None:
+    out = tmp_path / "x.json"
+    assert pl.main([str(FIXTURE), "--label", "before", "--out", str(out), "--git-sha", sha]) == 1
+    assert not out.exists()
+
+
+def test_cli_accepts_a_dirty_commit_id(tmp_path: Path) -> None:
+    out = tmp_path / "x.json"
+    assert (
+        pl.main([str(FIXTURE), "--label", "before", "--out", str(out), "--git-sha", f"{SHA}-dirty"])
+        == 0
+    )
+
+
 def test_cli_rejects_unknown_label(tmp_path: Path) -> None:
     with pytest.raises(SystemExit):
         pl.main([str(FIXTURE), "--label", "during", "--out", str(tmp_path / "x.json")])
@@ -139,7 +156,11 @@ def test_default_git_sha_is_head_and_marks_uncommitted_code() -> None:
 
 def test_dirty_suffix_follows_git_status(monkeypatch: pytest.MonkeyPatch) -> None:
     head = "0" * 40
-    for status, expected in (("", head), (" M scripts/parse_lynis.py", f"{head}-dirty")):
+    for status, expected in (
+        ("", head),
+        (" M scripts/parse_lynis.py", f"{head}-dirty"),
+        ("?? roles/ssh_hardening/tasks/main.yml", f"{head}-dirty"),
+    ):
         answers = {"rev-parse": head, "status": status}
         monkeypatch.setattr(pl, "git", lambda *args, a=answers: a[args[0]])
         assert pl.head_sha() == expected

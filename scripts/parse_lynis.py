@@ -12,6 +12,7 @@ Usage: scripts/parse_lynis.py REPORT --label before|after [--out FILE] [--git-sh
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -20,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 LABELS = ("before", "after")
 REQUIRED = ("hardening_index", "lynis_version", "hostname", "report_datetime_start")
+GIT_SHA = re.compile(r"[0-9a-f]{40}(-dirty)?")
 
 
 class ReportError(Exception):
@@ -61,7 +63,8 @@ def summarize(text: str, label: str, git_sha: str) -> dict:
         raise ReportError(f"report repeats {', '.join(repeated)}; expected once each")
     field = {key: values[key][0] for key in REQUIRED}
     index = field["hardening_index"]
-    if not index.isdigit() or not 0 <= int(index) <= 100:
+    # ASCII digits only: str.isdigit() also accepts other scripts and "²".
+    if not re.fullmatch(r"[0-9]{1,3}", index) or not 0 <= int(index) <= 100:
         raise ReportError(f"hardening_index must be a whole number from 0 to 100, got {index!r}")
     try:
         started = datetime.strptime(field["report_datetime_start"], "%Y-%m-%d %H:%M:%S")
@@ -82,11 +85,12 @@ def summarize(text: str, label: str, git_sha: str) -> dict:
 def head_sha() -> str:
     """The controller's git commit, so a result names the code that made it.
 
-    Ends in -dirty when tracked files outside results/ have uncommitted
-    changes, because then the commit alone does not describe that code.
+    Ends in -dirty when files outside results/ (tracked, or untracked and not
+    ignored) differ from the commit, because then the commit alone does not
+    describe that code.
     """
     sha = git("rev-parse", "HEAD")
-    changed = git("status", "--porcelain", "--untracked-files=no", "--", ".", ":(exclude)results")
+    changed = git("status", "--porcelain", "--", ".", ":(exclude)results")
     return f"{sha}-dirty" if changed else sha
 
 
@@ -113,9 +117,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     out = args.out or ROOT / "results" / f"lynis-{args.label}.json"
     try:
-        text = args.report.read_text()
+        if args.git_sha is not None and not GIT_SHA.fullmatch(args.git_sha):
+            raise ReportError(f"--git-sha must be a 40-character commit id, got {args.git_sha!r}")
+        text = args.report.read_text(encoding="utf-8")
         data = summarize(text, args.label, args.git_sha or head_sha())
-    except (OSError, ReportError, subprocess.CalledProcessError) as err:
+    except (OSError, UnicodeDecodeError, ReportError, subprocess.CalledProcessError) as err:
         print(f"parse_lynis: {err}", file=sys.stderr)
         return 1
     write_json(out, data)

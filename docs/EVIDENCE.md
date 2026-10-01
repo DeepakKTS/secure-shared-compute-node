@@ -16,7 +16,7 @@ This project exists to be believed. These rules protect that.
 {"label": "before", "host": "ssc-node", "timestamp": "UTC ISO8601", "lynis_version": "", "hardening_index": 0, "warnings": 0, "suggestions": 0, "git_sha": ""}
 ```
 
-`git_sha` is the controller's commit when the result was made. It ends in `-dirty` when tracked files outside `results/` had uncommitted changes, because then the commit alone does not describe the code. Commit before `make baseline` or `make audit`, so the result names real code.
+`git_sha` is the controller's commit when the result was made. It ends in `-dirty` when files outside `results/` (tracked, or untracked and not gitignored) differed from the commit, because then the commit alone does not describe the code. Commit before `make baseline` or `make audit`, so the result names real code.
 
 `results/scenarios/SX.json`
 ```json

@@ -88,7 +88,9 @@ def test_lynis_pin_matches_versions_md() -> None:
     assert EXACT_VERSION.match(version), f"Lynis not pinned exactly: {version}"
     assert re.fullmatch(r"[0-9a-f]{64}", play["vars"]["audit_lynis_sha256"])
     recorded = versions_table()["Lynis"]
-    assert recorded.startswith(version), f"VERSIONS.md has {recorded!r}, audit.yml pins {version}"
+    assert re.match(rf"{re.escape(version)}\b(?!\.)", recorded), (
+        f"VERSIONS.md has {recorded!r}, audit.yml pins {version}"
+    )
     assert play["vars"]["audit_lynis_sha256"] in recorded
 
 
