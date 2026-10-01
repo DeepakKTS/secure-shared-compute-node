@@ -10,3 +10,10 @@ One line per task: date, task ID, commit, what was verified. "built, not verifie
 - 2026-10-01 P0.6 651d446 (ticked in 6ca1b71) GitHub Actions run 36824227733 green: make deps, make lint (ansible-lint production profile), make test on ubuntu-24.04; actions pinned to commit SHAs
 - 2026-10-01 P0.7 a3e807e built, not verified (Multipass and Ubuntu image rows pending until Multipass is installed). Every pinned Python package, collection and CI action is recorded with source and date; policy test enforces it
 - 2026-10-01 P0.8 539795f built, not verified (needs VMs). lab_check.yml passes ansible-lint production profile and syntax-check; make lint and make test pass
+- 2026-10-01 review 7a3926f..e46aef0 Phase 0 security review: items 2 to 6, the gitignore gaps and the disk check bug fixed; item 1 per the user's decision (lab-down reads a typed yes from /dev/tty, `Bash(ssh:*)` removed, force-push claim corrected); item 7 added as P5.0. make lint, make test pass; CI run 36828242865 green
+- 2026-10-01 P0.3 337d336 verified on real VMs: make lab-up created 3 VMs (multipass list shows 3 Running), make ping passes, `ssh -F .lab/ssh_config -o ControlPath=none <vm> true` works on all 3; lab-down refusal covered by unit tests, including a typed yes on a pty
+- 2026-10-01 P0.4 337d336 verified: inventory/lab.yml generated from the live VMs, gitignored, 3 hosts; lab_cidr taken from the host Multipass bridge; controller IP detected from SSH_CONNECTION of multipass exec
+- 2026-10-01 P0.5 337d336 verified: `LAB_PROFILE=small make lab-up` against the existing VMs gives 2 hosts with the node in node and monitor groups; lab_check and lab.sh check pass. Not a fresh two-VM launch (same code path, unit tested)
+- 2026-10-01 P0.7 337d336 verified: Multipass and Ubuntu image rows filled from `multipass version`, the GitHub releases API, `multipass info` and /etc/cloud/build.info
+- 2026-10-01 P0.8 337d336 verified: lab_check.yml ran from make lab-up on all 3 VMs with changed=0 and failed=0; BTF present on all 3
+- 2026-10-01 Phase 0 exit 337d336 `make deps && make lint && make test && make lab-up && make ping` all exit 0
