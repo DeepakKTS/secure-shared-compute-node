@@ -10,7 +10,7 @@ One TODO task per cycle.
 2. Verify it:
    - the task's own check from `docs/FEATURES.md`;
    - `make lint` and `make test`;
-   - for roles, also the touched role's lab suite (`pytest -m lab tests/test_<role>.py`) and idempotency (a rerun reports `changed=0`);
+   - for roles, also the touched role's lab suite (`pytest -m lab tests/test_<role>.py`) and idempotency (`make idempotency TAGS=<role>`: the second run reports `changed=0`);
    - `make reboot` and a recheck of the live values, only for roles that set boot-time state (sysctl, mounts, units, the firewall table, audit rules). Boot-time units have undone settings before, so for those roles a check that passed only before a reboot does not count.
 3. Tick the box in `TODO.md`.
 4. Commit, with the verification commands and their results in the commit body.

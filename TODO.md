@@ -32,7 +32,7 @@ Milestone A = every item not marked (Milestone B). See `docs/PLAN.md`.
 - [x] P2.6 role auto_updates (F-25)
 - [x] P2.7 role tmp_hardening (F-26)
 - [x] P2.8 role auditd (F-27)
-- [ ] P2.9 make idempotency (F-28)
+- [x] P2.9 make idempotency (F-28)
 - [ ] P2.10 monitor gets base, users, ssh_hardening, firewall, fail2ban (F-29, monitor-specific ports in P4.8)
 - [ ] P2.11 testinfra tests for every role above
 - [ ] Exit: `make harden && make idempotency && make verify`, admin key login works over a new connection, password login fails, `multipass exec ssc-node -- true` works

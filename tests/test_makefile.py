@@ -9,7 +9,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 STUBS = {
-    "idempotency": 2,
     "verify": 2,
     "monitoring": 4,
     "detection": 5,
@@ -95,6 +94,14 @@ def test_baseline_audits_then_parses_a_fresh_report() -> None:
 def test_harden_runs_the_playbook_with_optional_tags(args: tuple[str, ...], expected: str) -> None:
     steps = make("-n", "harden", *args).stdout.splitlines()
     assert steps[-1].rstrip() == f".venv/bin/ansible-playbook playbooks/harden.yml{expected}"
+
+
+@pytest.mark.parametrize(("args", "expected"), [((), ""), (("TAGS=base",), " --tags base")])
+def test_idempotency_runs_the_script_with_optional_tags(
+    args: tuple[str, ...], expected: str
+) -> None:
+    steps = make("-n", "idempotency", *args).stdout.splitlines()
+    assert steps[-1].rstrip() == f".venv/bin/python scripts/idempotency.py{expected}"
 
 
 @pytest.mark.parametrize(("args", "expected"), [((), ""), (("QUICK=1",), " --quick")])

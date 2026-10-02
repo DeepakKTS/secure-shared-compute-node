@@ -136,15 +136,18 @@ baseline: check-venv ## Lynis on the fresh node -> results/lynis-before.json
 harden: check-venv ## Hardening and isolation roles
 	$(ANSIBLE_PLAYBOOK) playbooks/harden.yml $(if $(TAGS),--tags $(TAGS),)
 
+# Runs harden.yml twice and reads the second run's PLAY RECAP: any host with
+# changed, failed or unreachable above 0 fails it (CLAUDE.md rule 5). TAGS=
+# works as for harden.
+idempotency: check-venv ## Run harden twice; fail if the second run changes anything
+	$(PY) scripts/idempotency.py $(if $(TAGS),--tags $(TAGS),)
+
 # HOSTS=<group> limits it, for example `make reboot HOSTS=node`. Then rerun
 # the testinfra tests: this is how boot-time overrides are caught.
 reboot: check-venv ## Reboot lab VMs and wait for boot to finish (checks boot-time state)
 	$(ANSIBLE_PLAYBOOK) playbooks/reboot.yml $(if $(HOSTS),-e reboot_hosts=$(HOSTS),)
 
 # ---- Later phases (stubs until built) ----------------------------------------
-
-idempotency: ## Run harden twice; fail if the second run changes anything
-	@$(call todo,2)
 
 verify: ## testinfra against node and monitor -> results/
 	@$(call todo,2)
