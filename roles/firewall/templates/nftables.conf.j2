@@ -38,4 +38,14 @@ table inet ssc_filter {
 
 		limit rate {{ firewall_log_rate }} log prefix "SSC-INPUT-DROP: " level info
 	}
+
+	# This host is not a router, and kernel forwarding is off. The drop
+	# policy still holds if something turns forwarding on (a container
+	# runtime, a VPN client), so the host cannot be used to reach other
+	# networks through it.
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+
+		limit rate {{ firewall_log_rate }} log prefix "SSC-FORWARD-DROP: " level info
+	}
 }

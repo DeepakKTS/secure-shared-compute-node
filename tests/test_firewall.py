@@ -53,6 +53,20 @@ def test_input_policy_is_drop(host) -> None:
     assert "type filter hook input priority filter; policy drop;" in input_chain(host)
 
 
+@pytest.mark.parametrize("key", ["net.ipv4.ip_forward", "net.ipv6.conf.all.forwarding"])
+def test_kernel_forwarding_is_off(host, key: str) -> None:
+    # Not a router. Something that turns forwarding on (a container runtime,
+    # a VPN client) makes this fail; the forward chain still drops.
+    assert host.sysctl(key) == 0
+
+
+def test_forward_policy_is_drop(host) -> None:
+    with host.sudo():
+        chain = host.check_output("nft list chain inet ssc_filter forward")
+    assert "type filter hook forward priority filter; policy drop;" in chain, chain
+    assert 'log prefix "SSC-FORWARD-DROP: "' in chain, chain
+
+
 def test_ssh_is_allowed_from_admin_sources_controller_first(host) -> None:
     chain = input_chain(host)
     v = variables(host)

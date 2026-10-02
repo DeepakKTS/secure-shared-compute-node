@@ -1,6 +1,6 @@
 # Role: firewall
 
-Runs on the node and the monitor. Ingress only for now. Egress rules for mining pool ports come in Phase 5 (P5.5), exporter ports from the monitor in Phase 4 (P4.8), and the monitor's own ports in P2.10.
+Runs on the node and the monitor. Ingress, plus a forward chain that drops everything. Egress rules for mining pool ports come in Phase 5 (P5.5), exporter ports from the monitor in Phase 4 (P4.8), and the monitor's own ports in P2.10.
 
 ## What it addresses
 
@@ -13,6 +13,10 @@ Rules, in order:
 - DHCP replies (v4 and v6). Without them the lease cannot renew, and the address is lost hours later, which is a lockout too.
 - Ping, rate limited, and IPv6 neighbour discovery.
 - Everything else is dropped and logged (rate limited) with the prefix `SSC-INPUT-DROP:`.
+
+Forwarding: the `forward` chain has policy drop and no accept rule, and logs (rate limited) with the prefix `SSC-FORWARD-DROP:`. The host is not a router, and kernel forwarding is off (`net.ipv4.ip_forward` and `net.ipv6.conf.all.forwarding` are 0, the kernel default). So today the chain sees nothing. It is there for the day something turns forwarding on: a container runtime, a VPN client, or an attacker with root. Then the host still does not pass traffic between networks, so a compromised node cannot become a route into other machines. A log line with this prefix means something enabled forwarding, which is worth a look.
+
+Rootful Docker turns forwarding on and routes its containers' traffic through this hook, so this policy cuts container networking. If DASH runs it, add an accept rule for the Docker bridge here, on purpose. Rootless Docker (P3.3) does not forward.
 
 ## Why nftables, and why this table layout
 
@@ -51,4 +55,4 @@ PATH=.venv/bin:$PATH .venv/bin/pytest -m lab tests/test_firewall.py
 scripts/lab.sh check
 ```
 
-The tests read the live ruleset (`nft list`), check that from the attacker only port 22 answers in a scan of ports 1 to 1024, that closed ports time out instead of refusing, and that a listener started on port 8888 is reachable on the host but not from the attacker.
+The tests read the live ruleset (`nft list`): input and forward policies are drop, and kernel forwarding is off. They check that from the attacker only port 22 answers in a scan of ports 1 to 1024, that closed ports time out instead of refusing, and that a listener started on port 8888 is reachable on the host but not from the attacker.
