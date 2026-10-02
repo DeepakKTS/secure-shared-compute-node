@@ -8,6 +8,7 @@ demo`, then `make demo QUICK=1`, then the page run, and checks that the repo
 """
 
 import ast
+import fcntl
 import io
 import json
 import os
@@ -142,18 +143,25 @@ def changed_keys(before: dict, after: dict) -> set[str]:
     return {key for key in set(before) | set(after) if before.get(key) != after.get(key)}
 
 
+# Claude Code rewrites this file (and so changes .claude's mtime) when the
+# owner approves a command with "don't ask again", at any moment. demo.py
+# never runs Claude Code. Found by the B2 runs in .lab/flaky/.
+CLAUDE_LOCAL = {ROOT / ".claude", ROOT / ".claude" / "settings.local.json"}
+
+
 def repo_state(root: Path = ROOT) -> dict[str, tuple[int, int, int]]:
     """(mode, size, mtime) of every file and directory in the repo, ignored
     ones included, so a write, a new file or a removed one all show. Left
     out: .lab/audit (Claude Code's own hooks append to it), .git (an editor's
     git integration can write there; demo.py runs no git command, see
-    test_demo_runs_only_multipass_ssh_and_pytest) and Finder's .DS_Store."""
+    test_demo_runs_only_multipass_ssh_and_pytest), Claude Code's local
+    settings (CLAUDE_LOCAL) and Finder's .DS_Store."""
     state = {}
     for top, dirs, files in os.walk(root):
         here = Path(top)
         dirs[:] = [d for d in dirs if here / d not in (ROOT / ".git", LAB / "audit")]
         for name in [*dirs, *files]:
-            if name == ".DS_Store":
+            if name == ".DS_Store" or here / name in CLAUDE_LOCAL:
                 continue
             path = here / name
             st = path.lstat()
@@ -464,6 +472,97 @@ def test_page_that_cannot_be_written_is_an_error(page_path: Path) -> None:
     assert text.splitlines()[-1].startswith("Could not write the page: ")
 
 
+# ---- the lock on .lab/demo -------------------------------------------------
+
+
+def hold_lock(directory: Path) -> int:
+    """Lock the directory the way another demo run would."""
+    directory.mkdir(parents=True, exist_ok=True)
+    fd = os.open(directory, os.O_RDONLY)
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    return fd
+
+
+def lock_is_free(directory: Path) -> bool:
+    fd = os.open(directory, os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return True
+    except BlockingIOError:
+        return False
+    finally:
+        os.close(fd)
+
+
+@pytest.mark.parametrize("flags", [{}, {"as_page": True}], ids=["full", "page"])
+def test_a_writing_run_stops_while_another_holds_the_lock(
+    saved_result: Path, page_path: Path, flags: dict
+) -> None:
+    fd = hold_lock(saved_result.parent)
+    try:
+        lab = FakeLab()
+        rc, text = run_demo(lab, **flags)
+    finally:
+        os.close(fd)
+    assert rc == 1
+    assert text.startswith("Another demo run is writing "), text
+    assert lab.calls == [], "nothing runs while the lock is taken"
+    assert not saved_result.exists() and not page_path.exists()
+
+
+def test_quick_run_takes_no_lock(saved_result: Path) -> None:
+    run_demo(FakeLab())
+    fd = hold_lock(saved_result.parent)
+    try:
+        rc, text = run_demo(FakeLab(), quick=True, at=QUICK_AT)
+    finally:
+        os.close(fd)
+    assert rc == 0, text
+
+
+def test_a_run_releases_its_lock(saved_result: Path) -> None:
+    run_demo(FakeLab())
+    assert lock_is_free(saved_result.parent)
+
+
+def test_a_run_shares_a_lock_its_parent_passes(saved_result: Path, monkeypatch) -> None:
+    fd = hold_lock(saved_result.parent)
+    monkeypatch.setenv(demo.LOCK_FD_ENV, str(fd))
+    try:
+        rc, text = run_demo(FakeLab())
+        assert rc == 0, text
+        # The parent's lock is still held after the run.
+        assert not lock_is_free(saved_result.parent)
+    finally:
+        os.close(fd)
+
+
+def test_a_passed_descriptor_for_another_path_is_refused(
+    saved_result: Path, tmp_path: Path, monkeypatch
+) -> None:
+    other = tmp_path / "other"
+    other.mkdir()
+    fd = os.open(other, os.O_RDONLY)
+    monkeypatch.setenv(demo.LOCK_FD_ENV, str(fd))
+    try:
+        lab = FakeLab()
+        rc, text = run_demo(lab)
+    finally:
+        os.close(fd)
+    assert rc == 1
+    assert text.startswith("Could not lock "), text
+    assert lab.calls == []
+
+
+def test_only_claude_local_settings_are_left_out() -> None:
+    # The lab test ignores the file Claude Code rewrites on an approval, and
+    # nothing else in .claude/.
+    state = repo_state()
+    assert ".claude/settings.json" in state
+    assert ".claude/hooks/guard_delete.py" in state
+    assert ".claude" not in state and ".claude/settings.local.json" not in state
+
+
 def test_ssh_writes_nothing_on_the_controller() -> None:
     # No control socket, no known_hosts update; a fresh login each time.
     argv = demo.ssh("true")
@@ -579,6 +678,17 @@ def test_demo_runs_change_nothing_but_their_own_files_in_lab_demo() -> None:
     saved = str(REAL_SAVED.relative_to(ROOT))
     saved_dir = str(REAL_SAVED.parent.relative_to(ROOT))
     page = str(REAL_PAGE.relative_to(ROOT))
+    # Hold the demo lock for all three steps and share it with each run, so
+    # another demo run (make demo-html in a terminal) is refused instead of
+    # writing .lab/demo/ under the test. That happened in the B2 runs.
+    REAL_SAVED.parent.mkdir(exist_ok=True)
+    lock = os.open(REAL_SAVED.parent, os.O_RDONLY)
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(lock)
+        pytest.fail(f"another demo run is writing {saved_dir}; rerun the test when it ends")
+    env = {**os.environ, demo.LOCK_FD_ENV: str(lock)}
     make_demo = ["make", "--no-print-directory", "demo"]
     # The full run first: QUICK=1 and the page show the result it saves. The
     # page run is the script without --open, as `make demo-html` would open a
@@ -591,22 +701,22 @@ def test_demo_runs_change_nothing_but_their_own_files_in_lab_demo() -> None:
             {page}, {page, saved_dir}, "Wrote .lab/demo/index.html",
         ),
     )  # fmt: skip
-    for argv, must_change, may_change, says in steps:
-        repo_before = repo_state()
-        if saved_dir not in repo_before:
-            # Making .lab/demo changes .lab's own mtime, once. Any other new
-            # entry in .lab still shows as its own key.
-            may_change = may_change | {".lab"}
-        vms_before = {name: vm_state(name) for name in names}
-        result = subprocess.run(
-            argv, cwd=ROOT, capture_output=True, text=True, check=False, timeout=900
-        )
-        vms_after = {name: vm_state(name) for name in names}
-        changed = changed_keys(repo_before, repo_state())
-        assert result.returncode == 0, result.stdout + result.stderr
-        assert "Phase 2 checks: PASS" in result.stdout and says in result.stdout, result.stdout
-        assert must_change <= changed <= may_change, (argv, sorted(changed))
-        for name in names:
-            gone = sorted(set(vms_before[name]) - set(vms_after[name]))
-            new = sorted(set(vms_after[name]) - set(vms_before[name]))
-            assert (gone, new) == ([], []), (argv, name)
+    try:
+        for argv, must_change, may_change, says in steps:
+            repo_before = repo_state()
+            vms_before = {name: vm_state(name) for name in names}
+            result = subprocess.run(
+                argv, cwd=ROOT, env=env, pass_fds=(lock,), capture_output=True, text=True,
+                check=False, timeout=900,
+            )  # fmt: skip
+            vms_after = {name: vm_state(name) for name in names}
+            changed = changed_keys(repo_before, repo_state())
+            assert result.returncode == 0, result.stdout + result.stderr
+            assert "Phase 2 checks: PASS" in result.stdout and says in result.stdout, result.stdout
+            assert must_change <= changed <= may_change, (argv, sorted(changed))
+            for name in names:
+                gone = sorted(set(vms_before[name]) - set(vms_after[name]))
+                new = sorted(set(vms_after[name]) - set(vms_before[name]))
+                assert (gone, new) == ([], []), (argv, name)
+    finally:
+        os.close(lock)

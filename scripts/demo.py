@@ -17,6 +17,11 @@ nothing loaded from elsewhere, so it works offline. --open then opens the
 page with macOS `open`. Those two files in .lab/demo/ are the only ones the
 demo writes; --quick alone writes none.
 
+A run that writes into .lab/demo/ (a full run, or --html) holds an
+exclusive lock on that directory for the whole run, so two runs never write
+it at once. One that finds the lock taken stops at once and writes nothing.
+--quick alone only reads, so it takes no lock.
+
 tests/test_demo.py checks all of this, and that a real run leaves the repo
 (apart from those files) and the VMs as they were.
 
@@ -25,6 +30,7 @@ Exit 0 when every check worked and passed.
 """
 
 import argparse
+import fcntl
 import html
 import json
 import os
@@ -135,6 +141,49 @@ def write_whole(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     partial.write_text(text, encoding="utf-8")
     os.replace(partial, path)
+
+
+# A process that already holds the lock on .lab/demo (the lab test) passes
+# its descriptor here, and the run shares that lock instead of taking its own.
+LOCK_FD_ENV = "SSC_DEMO_LOCK_FD"
+
+
+class DirLock:
+    """An exclusive flock on a directory, held until release(). Locking the
+    directory itself leaves no lock file behind."""
+
+    def __init__(self, directory: Path) -> None:
+        self.directory = directory
+        self.fd: int | None = None
+        self.owned = False
+
+    def acquire(self) -> bool:
+        """True once held; False when another process holds it."""
+        inherited = os.environ.get(LOCK_FD_ENV)
+        if inherited is not None:
+            fd = int(inherited)
+            if not os.path.samestat(os.fstat(fd), os.stat(self.directory)):
+                raise OSError(f"{LOCK_FD_ENV}={inherited} is not {self.directory}")
+        else:
+            self.directory.mkdir(parents=True, exist_ok=True)
+            fd = os.open(self.directory, os.O_RDONLY)
+            self.owned = True
+        try:
+            # On an inherited descriptor this succeeds at once: the lock
+            # belongs to the open file the parent shared.
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            if self.owned:
+                os.close(fd)
+            return False
+        self.fd = fd
+        return True
+
+    def release(self) -> None:
+        # Never unlock an inherited descriptor: that would drop the parent's lock.
+        if self.owned and self.fd is not None:
+            os.close(self.fd)
+        self.fd = None
 
 
 def read_saved(path: Path) -> tuple[dict | None, str]:
@@ -411,6 +460,28 @@ class Demo:
             self.say("Could not run `open` (macOS only); open the page in a browser.")
 
     def main(self) -> int:
+        """Run the demo; a run that writes into .lab/demo/ holds its lock."""
+        if self.quick and not self.as_page:
+            return self.run()
+        directory = (self.page if self.as_page else self.saved).parent
+        lock = DirLock(directory)
+        try:
+            held = lock.acquire()
+        except (OSError, ValueError) as err:
+            self.say(f"Could not lock {os.path.relpath(directory, ROOT)}: {err}")
+            return 1
+        if not held:
+            self.say(
+                f"Another demo run is writing {os.path.relpath(directory, ROOT)} (make demo,"
+                " make demo-html or the lab test). Wait for it to end, then try again."
+            )
+            return 1
+        try:
+            return self.run()
+        finally:
+            lock.release()
+
+    def run(self) -> int:
         self.read_at = self.clock()
         self.say("Secure Shared Compute Node: live lab summary (changes nothing on the VMs)")
         self.say(f"Live values read {self.read_at}")
