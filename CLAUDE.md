@@ -151,7 +151,7 @@ A `LAB_PROFILE=small` option collapses monitor onto node for low-RAM laptops. Do
 | `make detection` | Falco, alert rules, egress rules | |
 | `make verify` | testinfra against node and monitor | pytest report in `results/` |
 | `make audit` | Lynis after hardening | `results/lynis-after.json` |
-| `make demo` | Read-only summary of the live lab: VM state, Lynis indexes from `results/`, key live settings on ssc-node, one pass/fail line from the Phase 2 suites without the tests marked `changes_state`. Changes nothing on any VM and writes no file (`tests/test_demo.py`) | summary |
+| `make demo` | Read-only summary of the live lab: VM state, Lynis indexes from `results/`, key live settings on ssc-node, one pass/fail line from the Phase 2 suites without the tests marked `changes_state`. `QUICK=1` skips the suite run and shows the last saved result with the time it was saved. Changes nothing on any VM; the only file it writes is that saved result, `.lab/demo/phase2.json` (`tests/test_demo.py`) | summary |
 | `make audit-log` | Show the Bash commands the guard hook blocked today (UTC), from `.lab/audit/bash.log`; `DATE=` another day, `ALL=1` also what ran | list of entries |
 | `make simulate` | Runs S1 to S6 from attacker/node | `results/scenarios/*.json` |
 | `make report` | Builds evidence tables | updates README between markers |

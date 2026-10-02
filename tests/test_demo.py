@@ -1,8 +1,10 @@
-"""Tests for scripts/demo.py (make demo), which must change nothing.
+"""Tests for scripts/demo.py (make demo), which must change nothing on the VMs.
 
 The unit tests feed it canned command output and check what it runs and
-prints, and that it writes no file. The lab test runs the real `make demo`
-and checks that the repo and every lab VM are as they were before it.
+prints, and that the only file it writes is the saved Phase 2 result (none
+with --quick). The lab test runs the real `make demo`, then `make demo
+QUICK=1`, and checks that the repo (apart from that file) and every lab VM
+are as they were before each.
 """
 
 import ast
@@ -60,6 +62,34 @@ NODE_OUTPUT = {
 }
 NO_SUDO = "User {user} is not allowed to run sudo on ssc-node.\n"
 
+REAL_SAVED = demo.SAVED
+FULL_AT = "2026-01-02T03:04:05Z"
+QUICK_AT = "2026-01-02T09:00:00Z"
+PHASE2_PASS = (
+    "Phase 2 checks: PASS (227 passed; 17 tests that change VM state left out,"
+    " `pytest -m lab` runs them)"
+)
+
+
+@pytest.fixture(autouse=True)
+def saved_result(tmp_path: Path, monkeypatch) -> Path:
+    # Unit tests never touch the real saved result in .lab/demo/.
+    path = tmp_path / "demo" / "phase2.json"
+    monkeypatch.setattr(demo, "SAVED", path)
+    return path
+
+
+def saved_record(**changes) -> str:
+    record = {
+        "saved_at": FULL_AT,
+        "passed": True,
+        "counts": {"passed": 227, "deselected": 17},
+        "returncode": 0,
+        "suites": list(demo.PHASE2_SUITES),
+        "marker": "lab and not changes_state",
+    }
+    return json.dumps({**record, **changes})
+
 
 def completed(argv, rc: int = 0, out: str = "", err: str = "") -> subprocess.CompletedProcess:
     return subprocess.CompletedProcess(argv, rc, out, err)
@@ -90,20 +120,20 @@ class FakeLab:
         raise AssertionError(f"demo ran an unexpected command: {argv}")
 
 
-def run_demo(lab: FakeLab) -> tuple[int, str]:
+def run_demo(lab: FakeLab, quick: bool = False, at: str = FULL_AT) -> tuple[int, str]:
     out = io.StringIO()
-    rc = demo.Demo(runner=lab, out=out).main()
+    rc = demo.Demo(runner=lab, out=out, quick=quick, clock=lambda: at).main()
     return rc, out.getvalue()
 
 
-def repo_state() -> dict[str, tuple[int, int, int]]:
+def repo_state(root: Path = ROOT) -> dict[str, tuple[int, int, int]]:
     """(mode, size, mtime) of every file and directory in the repo, ignored
     ones included, so a write, a new file or a removed one all show. Left
     out: .lab/audit (Claude Code's own hooks append to it), .git (an editor's
     git integration can write there; demo.py runs no git command, see
     test_demo_runs_only_multipass_ssh_and_pytest) and Finder's .DS_Store."""
     state = {}
-    for top, dirs, files in os.walk(ROOT):
+    for top, dirs, files in os.walk(root):
         here = Path(top)
         dirs[:] = [d for d in dirs if here / d not in (ROOT / ".git", LAB / "audit")]
         for name in [*dirs, *files]:
@@ -111,7 +141,7 @@ def repo_state() -> dict[str, tuple[int, int, int]]:
                 continue
             path = here / name
             st = path.lstat()
-            state[str(path.relative_to(ROOT))] = (st.st_mode, st.st_size, st.st_mtime_ns)
+            state[str(path.relative_to(root))] = (st.st_mode, st.st_size, st.st_mtime_ns)
     return state
 
 
@@ -137,11 +167,11 @@ def test_summary_shows_each_item() -> None:
         "  /tmp             tmpfs rw,nosuid,nodev,noexec,size=524288k",
         "  /dev/shm         tmpfs rw,nosuid,nodev,noexec",
         "  sudo rights      alice: none, bob: none",
-        "Phase 2 checks: PASS (227 passed; 17 tests that change VM state left out,"
-        " `pytest -m lab` runs them)",
+        PHASE2_PASS,
     ):
         assert line in text.splitlines(), (line, text)
     assert "other-vm" not in text
+    assert text.splitlines()[1] == f"Live values read {FULL_AT}"
 
 
 def test_lynis_index_comes_from_results() -> None:
@@ -187,10 +217,92 @@ def test_demo_runs_only_multipass_ssh_and_pytest() -> None:
             assert argv in (["multipass", "list", "--format", "json"], demo.pytest_argv()), argv
 
 
-def test_demo_writes_no_file() -> None:
+def test_saved_result_lives_in_lab_demo() -> None:
+    assert REAL_SAVED == LAB / "demo" / "phase2.json"
+
+
+def test_full_run_saves_the_phase2_result(saved_result: Path) -> None:
+    _, text = run_demo(FakeLab())
+    assert json.loads(saved_result.read_text()) == json.loads(saved_record())
+    # Renamed into place: no partial file is left beside it.
+    assert [p.name for p in saved_result.parent.iterdir()] == ["phase2.json"]
+    assert text.splitlines()[-2] == PHASE2_PASS
+    assert text.splitlines()[-1].startswith("  saved for QUICK=1 in ")
+
+
+def test_full_run_writes_only_the_saved_result(saved_result: Path) -> None:
     before = repo_state()
     run_demo(FakeLab())
     assert differences(before, repo_state()) == []
+    assert saved_result.is_file()
+
+
+def test_quick_run_shows_the_saved_result_and_runs_no_tests(saved_result: Path) -> None:
+    run_demo(FakeLab())
+    lab = FakeLab(pytest_out="1 failed in 1.00s", pytest_rc=1)  # would FAIL if it ran
+    rc, text = run_demo(lab, quick=True, at=QUICK_AT)
+    assert rc == 0, text
+    assert [argv[0] for argv, _ in lab.calls if argv[0] not in ("multipass", "ssh")] == []
+    lines = text.splitlines()
+    assert lines[1] == f"Live values read {QUICK_AT}"
+    assert lines[-2:] == [
+        PHASE2_PASS,
+        f"  saved {FULL_AT} by the last full `make demo`; QUICK=1 did not rerun them",
+    ]
+
+
+def test_quick_run_writes_no_file(saved_result: Path) -> None:
+    run_demo(FakeLab())
+    before = repo_state(), repo_state(saved_result.parent)
+    run_demo(FakeLab(), quick=True, at=QUICK_AT)
+    assert differences(before[0], repo_state()) == []
+    assert differences(before[1], repo_state(saved_result.parent)) == []
+
+
+def test_quick_run_without_a_saved_result_fails() -> None:
+    rc, text = run_demo(FakeLab(), quick=True)
+    assert rc == 1
+    assert text.splitlines()[-1] == (
+        "Phase 2 checks: no saved result; run `make demo` once without QUICK=1"
+    )
+
+
+def test_quick_run_shows_a_saved_failure() -> None:
+    run_demo(FakeLab(pytest_out="1 failed, 226 passed, 17 deselected in 90.00s", pytest_rc=1))
+    rc, text = run_demo(FakeLab(), quick=True, at=QUICK_AT)
+    assert rc == 1
+    assert text.splitlines()[-2].startswith("Phase 2 checks: FAIL (1 failed, 226 passed;"), text
+
+
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [
+        ("{not json", "saved result unreadable"),
+        ("[1, 2]", "saved result unreadable"),
+        (saved_record(passed="yes"), "saved result unreadable"),
+        (saved_record(saved_at="yesterday"), "saved result unreadable"),
+        (saved_record(counts={"passed": "227"}), "saved result unreadable"),
+        (saved_record(suites=["tests/test_base.py"]), "saved result is for other suites"),
+        (saved_record(marker="lab"), "saved result is for other suites"),
+    ],
+)
+def test_quick_run_refuses_a_saved_result_it_cannot_trust(
+    saved_result: Path, content: str, message: str
+) -> None:
+    saved_result.parent.mkdir(parents=True)
+    saved_result.write_text(content)
+    rc, text = run_demo(FakeLab(), quick=True)
+    assert rc == 1
+    assert text.splitlines()[-1] == (
+        f"Phase 2 checks: {message}; run `make demo` once without QUICK=1"
+    )
+
+
+def test_quick_flag_reaches_the_demo(monkeypatch) -> None:
+    seen = []
+    monkeypatch.setattr(demo.Demo, "main", lambda self: seen.append(self.quick) or 0)
+    assert demo.main(["--quick"]) == 0 and demo.main([]) == 0
+    assert seen == [True, False]
 
 
 def test_ssh_writes_nothing_on_the_controller() -> None:
@@ -246,7 +358,7 @@ def test_tests_that_lift_bans_are_marked_changes_state() -> None:
 def test_phase2_line_fails_unless_every_check_ran_and_passed(summary: str, rc: int) -> None:
     code, text = run_demo(FakeLab(pytest_out=summary, pytest_rc=rc))
     assert code == 1
-    assert text.splitlines()[-1].startswith("Phase 2 checks: FAIL"), text
+    assert text.splitlines()[-2].startswith("Phase 2 checks: FAIL"), text
 
 
 def test_research_user_with_sudo_rights_is_flagged() -> None:
@@ -298,25 +410,42 @@ def vm_state(name: str) -> list[str]:
 
 
 @pytest.mark.lab
-def test_make_demo_changes_nothing() -> None:
+def test_make_demo_changes_nothing_but_its_saved_result() -> None:
     lab_hosts.hosts("node")  # skips without inventory/lab.yml
     names = [
         name
         for group in yaml.safe_load(lab_hosts.INVENTORY.read_text())["all"]["children"].values()
         for name in (group or {}).get("hosts") or {}
     ]
-    repo_before = repo_state()
-    vms_before = {name: vm_state(name) for name in names}
-    result = subprocess.run(
-        ["make", "--no-print-directory", "demo"],
-        cwd=ROOT, capture_output=True, text=True, check=False, timeout=900,
-    )  # fmt: skip
-    vms_after = {name: vm_state(name) for name in names}
-    repo_after = repo_state()
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "Phase 2 checks: PASS" in result.stdout
-    assert differences(repo_before, repo_after) == []
-    for name in names:
-        gone = sorted(set(vms_before[name]) - set(vms_after[name]))
-        new = sorted(set(vms_after[name]) - set(vms_before[name]))
-        assert (gone, new) == ([], []), name
+    saved = str(REAL_SAVED.relative_to(ROOT))
+    saved_dir = str(REAL_SAVED.parent.relative_to(ROOT))
+    # The full run first: QUICK=1 shows the result it saves.
+    for args, must_change, may_change in (
+        ((), {saved}, {saved, saved_dir}),
+        (("QUICK=1",), set(), set()),
+    ):
+        repo_before = repo_state()
+        if args == () and saved_dir not in repo_before:
+            # Making .lab/demo changes .lab's own mtime, once. Any other new
+            # entry in .lab still shows as its own key.
+            may_change = may_change | {".lab"}
+        vms_before = {name: vm_state(name) for name in names}
+        result = subprocess.run(
+            ["make", "--no-print-directory", "demo", *args],
+            cwd=ROOT, capture_output=True, text=True, check=False, timeout=900,
+        )  # fmt: skip
+        vms_after = {name: vm_state(name) for name in names}
+        repo_after = repo_state()
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "Phase 2 checks: PASS" in result.stdout
+        changed = {
+            key
+            for key in set(repo_before) | set(repo_after)
+            if repo_before.get(key) != repo_after.get(key)
+        }
+        assert must_change <= changed <= may_change, (args, sorted(changed))
+        for name in names:
+            gone = sorted(set(vms_before[name]) - set(vms_after[name]))
+            new = sorted(set(vms_after[name]) - set(vms_before[name]))
+            assert (gone, new) == ([], []), (args, name)
+    assert "QUICK=1 did not rerun them" in result.stdout

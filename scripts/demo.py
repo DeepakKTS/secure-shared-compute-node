@@ -1,30 +1,39 @@
-"""Print a short summary of the live lab, and change nothing (make demo).
+"""Print a short summary of the live lab, and change nothing on it (make demo).
 
-It reads results/ and asks the VMs. It writes no file on the controller, and
-every command it runs on ssc-node is in NODE_COMMANDS, each of which only
-reads. tests/test_demo.py checks both, and that a real run leaves the repo and
-the VMs as they were. The SSH logins and sudo calls still add lines to the
-VMs' journals; that is the only trace it leaves.
+It reads results/ and asks the VMs. Every command it runs on ssc-node is in
+NODE_COMMANDS, each of which only reads. The SSH logins and sudo calls still
+add lines to the VMs' journals; that is the only trace it leaves there.
 
 The last line runs the Phase 2 testinfra suites without the tests marked
 `changes_state` (a test ban, a temp file, a probe unit, a log file), so it
-changes nothing either. `pytest -m lab` runs them all.
+changes nothing either. `pytest -m lab` runs them all. That run takes
+minutes, so its result is saved to .lab/demo/phase2.json, the one file the
+demo writes. With --quick (make demo QUICK=1) the suites are not run, and the
+saved result is shown with the time it was saved.
 
-Usage: scripts/demo.py (exit 0 when every check worked and passed)
+tests/test_demo.py checks all of this, and that a real run leaves the repo
+(apart from that file) and the VMs as they were.
+
+Usage: scripts/demo.py [--quick] (exit 0 when every check worked and passed)
 """
 
+import argparse
 import json
 import os
 import re
 import subprocess
 import sys
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 LAB = ROOT / ".lab"
+# A full run saves its Phase 2 result here, and --quick shows it.
+SAVED = LAB / "demo" / "phase2.json"
+RERUN = "run `make demo` once without QUICK=1"
 NODE = "ssc-node"
 LAB_VMS = ("ssc-node", "ssc-monitor", "ssc-attacker")
 NODE_VARS = ROOT / "inventory" / "group_vars" / "node.yml"
@@ -103,10 +112,48 @@ def research_users() -> list[str]:
     return [user["name"] for user in yaml.safe_load(NODE_VARS.read_text())["users_research"]]
 
 
+def utc_now() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def read_saved(path: Path) -> tuple[dict | None, str]:
+    """The saved Phase 2 result, or why it cannot be shown."""
+    try:
+        record = json.loads(path.read_text())
+    except FileNotFoundError:
+        return None, f"no saved result; {RERUN}"
+    except (OSError, ValueError):
+        return None, f"saved result unreadable; {RERUN}"
+    if not isinstance(record, dict):
+        return None, f"saved result unreadable; {RERUN}"
+    counts = record.get("counts")
+    if not (
+        re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", str(record.get("saved_at")))
+        and isinstance(record.get("passed"), bool)
+        and isinstance(counts, dict)
+        and all(isinstance(n, int) for n in counts.values())
+    ):
+        return None, f"saved result unreadable; {RERUN}"
+    # A suite added since the save would be missing from the result.
+    if record.get("suites") != list(PHASE2_SUITES) or record.get("marker") != READ_ONLY_TESTS:
+        return None, f"saved result is for other suites; {RERUN}"
+    return record, ""
+
+
 class Demo:
-    def __init__(self, runner: Runner = run, out=sys.stdout) -> None:
+    def __init__(
+        self,
+        runner: Runner = run,
+        out=sys.stdout,
+        quick: bool = False,
+        saved: Path | None = None,
+        clock: Callable[[], str] = utc_now,
+    ) -> None:
         self.runner = runner
         self.out = out
+        self.quick = quick
+        self.saved = saved or SAVED
+        self.clock = clock
         self.ok = True
 
     def say(self, text: str = "") -> None:
@@ -238,6 +285,43 @@ class Demo:
             and counts.get("passed", 0) > 0
             and not any(counts.get(key) for key in ("failed", "error", "errors", "skipped"))
         )
+        self.show_phase2(passed, counts)
+        self.save_phase2(
+            {
+                "saved_at": self.clock(),
+                "passed": passed,
+                "counts": counts,
+                "returncode": result.returncode,
+                "suites": list(PHASE2_SUITES),
+                "marker": READ_ONLY_TESTS,
+            }
+        )
+
+    def save_phase2(self, record: dict) -> None:
+        # Written whole and then renamed, so --quick never reads half a file.
+        partial = self.saved.with_name(self.saved.name + ".partial")
+        try:
+            self.saved.parent.mkdir(parents=True, exist_ok=True)
+            partial.write_text(json.dumps(record, indent=2) + "\n")
+            os.replace(partial, self.saved)
+        except OSError as err:
+            self.ok = False
+            self.say(f"  could not save it for QUICK=1: {err}")
+            return
+        self.say(f"  saved for QUICK=1 in {os.path.relpath(self.saved, ROOT)}")
+
+    def phase2_saved(self) -> None:
+        record, error = read_saved(self.saved)
+        if record is None:
+            self.ok = False
+            self.say(f"Phase 2 checks: {error}")
+            return
+        self.show_phase2(record["passed"], record["counts"])
+        self.say(
+            f"  saved {record['saved_at']} by the last full `make demo`; QUICK=1 did not rerun them"
+        )
+
+    def show_phase2(self, passed: bool, counts: dict[str, int]) -> None:
         self.ok = self.ok and passed
         left_out = counts.get("deselected", 0)
         detail = ", ".join(f"{n} {key}" for key, n in counts.items() if key != "deselected")
@@ -247,7 +331,8 @@ class Demo:
         )
 
     def main(self) -> int:
-        self.say("Secure Shared Compute Node: live lab summary (read-only)")
+        self.say("Secure Shared Compute Node: live lab summary (changes nothing on the VMs)")
+        self.say(f"Live values read {self.clock()}")
         self.say()
         self.vms()
         self.say()
@@ -260,7 +345,10 @@ class Demo:
         self.mounts()
         self.sudo_rights()
         self.say()
-        self.phase2()
+        if self.quick:
+            self.phase2_saved()
+        else:
+            self.phase2()
         return 0 if self.ok else 1
 
 
@@ -274,5 +362,16 @@ def summary_counts(line: str) -> dict[str, int]:
     }
 
 
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Read-only summary of the live lab.")
+    parser.add_argument(
+        "--quick",
+        action="store_true",
+        help="show the saved Phase 2 result instead of running the suites",
+    )
+    args = parser.parse_args(argv)
+    return Demo(quick=args.quick).main()
+
+
 if __name__ == "__main__":
-    sys.exit(Demo().main())
+    sys.exit(main())

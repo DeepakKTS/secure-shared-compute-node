@@ -102,10 +102,11 @@ test: check-venv ## Unit tests that need no VMs
 audit-log: check-venv ## Show today's Bash commands the guard hook blocked
 	$(PY) scripts/show_bash_log.py $(if $(DATE),--date $(DATE),) $(if $(ALL),--all,)
 
-# Read-only: -B writes no __pycache__, and tests/test_demo.py checks that a
-# run leaves the repo and the VMs as they were.
-demo: check-venv ## Read-only summary of the live lab (changes nothing)
-	$(PY) -B scripts/demo.py
+# Read-only on the VMs. -B writes no __pycache__. A full run saves its Phase 2
+# result to .lab/demo/phase2.json, the only file it writes; QUICK=1 shows that
+# result instead of running the suites again. tests/test_demo.py checks both.
+demo: check-venv ## Read-only summary of the live lab (QUICK=1 skips the suite run)
+	$(PY) -B scripts/demo.py $(if $(QUICK),--quick,)
 
 # ---- Phase 1: baseline audit -------------------------------------------------
 

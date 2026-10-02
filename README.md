@@ -25,7 +25,7 @@ make deps
 make all
 ```
 
-`make demo` prints a short summary of the live lab: VM state, the Lynis numbers in `results/`, the key SSH, firewall, fail2ban, `/tmp` and sudo settings on the node, and one pass or fail line from the Phase 2 checks. It only reads. It leaves out the tests that change VM state (a test ban, a temp file), and a test checks that a run leaves the repo and the VMs as they were.
+`make demo` prints a short summary of the live lab: VM state, the Lynis numbers in `results/`, the key SSH, firewall, fail2ban, `/tmp` and sudo settings on the node, and one pass or fail line from the Phase 2 checks. It only reads the VMs. It leaves out the tests that change VM state (a test ban, a temp file), and a test checks that a run leaves the repo and the VMs as they were. The checks take a few minutes, so their result is saved to `.lab/demo/phase2.json`, the one file the demo writes. `make demo QUICK=1` skips them and shows that saved result with the time it was saved; the other lines are still read live.
 
 ### Low-RAM laptops: `LAB_PROFILE=small`
 
