@@ -9,6 +9,7 @@ demo`, then `make demo QUICK=1`, then the page run, and checks that the repo
 
 import ast
 import fcntl
+import html
 import io
 import json
 import os
@@ -405,8 +406,11 @@ def test_page_loads_nothing_and_has_light_and_dark_themes(page_path: Path) -> No
     for pattern in (r"<script", r"<link", r"<img", r"<iframe", r"@import", r"url\(", r"//",
                     r"\bsrc=", r"\bhref="):  # fmt: skip
         assert not re.search(pattern, page, re.I), pattern
-    assert "@media (prefers-color-scheme: dark)" in page
-    assert "color-scheme: light dark;" in page
+    # Dark glass by default, a light frosted version for a light system theme.
+    assert re.search(r":root \{ color-scheme: dark; --bg: #", page)
+    assert re.search(
+        r"@media \(prefers-color-scheme: light\) \{\s+:root \{ color-scheme: light;", page
+    )
 
 
 def test_page_shows_when_the_data_was_collected(page_path: Path) -> None:
@@ -452,6 +456,150 @@ def test_page_shows_failures_in_red(saved_result: Path, page_path: Path) -> None
     assert '<span class="pill fail">Something failed or could not be read' in page
     assert '<dt class="error">sshd -T</dt><dd class="error">ERROR: could not read</dd>' in page
     assert '<span class="pill fail">FAIL</span> <span>1 failed, 226 passed;' in page
+
+
+def commands_demo_runs() -> set[str]:
+    """Every command the demo runs, as the page shows it."""
+    return {
+        "multipass list --format json",
+        *EXPECTED_NODE_COMMANDS.values(),
+        *(demo.SUDO_LIST.format(user=user) for user in demo.research_users()),
+        demo.phase2_command(),
+    }
+
+
+def test_page_prompts_show_only_commands_the_demo_runs(page_path: Path) -> None:
+    _, _, page = run_page(page_path)
+    shown = [html.unescape(c) for c in re.findall(r'<span class="cmd">([^<]*)</span>', page)]
+    assert set(shown) <= commands_demo_runs(), set(shown) - commands_demo_runs()
+    # Every one of them is shown, each at the prompt of the host it ran on.
+    assert set(shown) == commands_demo_runs()
+    node_prompt = (
+        f'<span class="who">{demo.admin_user()}@ssc-node</span>:<span class="where">~</span>$'
+    )
+    for command in EXPECTED_NODE_COMMANDS.values():
+        assert f'{node_prompt} <span class="cmd">{html.escape(command)}</span>' in page, command
+    assert '<span class="who">controller</span>' in page
+    # Lynis does not run: its block names the files instead of a command.
+    assert "# read from results/lynis-before.json and results/lynis-interim-p2.json" in page
+
+
+def test_page_is_a_linux_terminal_window(page_path: Path) -> None:
+    _, _, page = run_page(page_path)
+    title = re.search(r'<span class="title">([^<]*)</span>', page).group(1)
+    assert title == f"{demo.admin_user()}@ssc-node: ~"
+    assert page.count('class="cursor"') == 1
+    # The cursor sits at the end of the last prompt, after every block.
+    last = page.index('<p class="prompt last">')
+    assert page.rindex('<p class="prompt') == last
+    assert last < page.index('class="cursor"') < page.index('<div class="statusbar">')
+
+
+def test_status_bar_shows_host_phase_read_time_and_result(page_path: Path) -> None:
+    _, _, page = run_page(page_path)
+    bar = page[page.index('<div class="statusbar">') :].split("</div>", 1)[0]
+    phase = re.search(r"^Current phase: \*\*(\d+)\*\*", (ROOT / "TODO.md").read_text(), re.M)
+    assert '<span class="key">host</span> ssc-node' in bar
+    assert f'<span class="key">phase</span> {phase.group(1)}' in bar
+    assert f'<span class="key">read</span> {QUICK_AT}' in bar
+    assert '<span class="chip pass">PASS</span>' in bar
+
+
+def test_one_failed_check_turns_the_page_red(page_path: Path) -> None:
+    # Everything passes but one node command, which cannot be read.
+    run_demo(FakeLab())
+    lab = FakeLab()
+    del lab.node["sudo -n fail2ban-client status sshd"]
+    rc, _ = run_demo(lab, at=QUICK_AT, as_page=True)
+    page = page_path.read_text()
+    assert rc == 1
+    assert (
+        '<dt class="error">fail2ban sshd</dt><dd class="error">ERROR: jail not running</dd>' in page
+    )
+    assert '<span class="pill fail">Something failed or could not be read' in page
+    assert '<span class="chip fail">FAIL</span>' in page and "chip pass" not in page
+    # The other rows keep their own colors.
+    assert '<dd class="ok">passwordauthentication no, permitrootlogin no' in page
+
+
+def test_secure_values_are_green_and_a_missing_vm_red(page_path: Path) -> None:
+    _, _, page = run_page(page_path)
+    for value in (
+        "Running   192.0.2.2",
+        "passwordauthentication no, permitrootlogin no, kbdinteractiveauthentication no",
+        "accept (inet f2b-table, fail2ban bans only), drop (inet ssc_filter)",
+        "tmpfs rw,nosuid,nodev,noexec,size=524288k",
+        "alice: none, bob: none",
+    ):
+        assert f'<dd class="ok">{value}</dd>' in page, value
+    assert '<dt>ssc-attacker</dt><dd class="down">not created</dd>' in page
+    # Output has no chain yet (egress filtering is Phase 5): no green.
+    assert "<dt>policy output</dt><dd>no chain, so accept</dd>" in page
+
+
+def test_page_uses_only_local_monospace_fonts(page_path: Path) -> None:
+    _, _, page = run_page(page_path)
+    assert demo.MONO == '"SF Mono", Menlo, "JetBrains Mono", "DejaVu Sans Mono", monospace'
+    fonts = re.findall(r"font(?:-family)?:\s*([^;}]+)", page)
+    assert fonts, "no font rules"
+    for value in fonts:
+        assert "var(--mono)" in value or value.strip() == "inherit", value
+    assert f"--mono: {demo.MONO};" in page
+
+
+def test_glass_has_a_solid_fallback_and_motion_can_be_turned_off(page_path: Path) -> None:
+    _, _, page = run_page(page_path)
+    assert "backdrop-filter: blur(" in page and "-webkit-backdrop-filter: blur(" in page
+    fallback = re.search(r"@supports not \(\(backdrop-filter[^{]*\{([^}]*)\}", page)
+    assert fallback and "background: var(--panel);" in fallback.group(1)
+    reduced = re.search(r"@media \(prefers-reduced-motion: reduce\) \{(.*?)\n\}", page, re.S)
+    assert reduced and ".cursor" in reduced.group(1) and ".glow" in reduced.group(1)
+    assert "animation: none;" in reduced.group(1)
+
+
+def luminance(color: str) -> float:
+    def channel(value: int) -> float:
+        c = value / 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    red, green, blue = (int(color[i : i + 2], 16) for i in (1, 3, 5))
+    return 0.2126 * channel(red) + 0.7152 * channel(green) + 0.0722 * channel(blue)
+
+
+def contrast(one: str, two: str) -> float:
+    high, low = sorted((luminance(one), luminance(two)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
+def over(top: str, alpha: float, under: str) -> str:
+    """The color `top` at `alpha` makes over `under`."""
+    mix = [
+        round(alpha * int(top[i : i + 2], 16) + (1 - alpha) * int(under[i : i + 2], 16))
+        for i in (1, 3, 5)
+    ]
+    return "#" + "".join(f"{c:02x}" for c in mix)
+
+
+@pytest.mark.parametrize("theme", sorted(demo.THEMES))
+def test_text_colors_meet_wcag_aa(theme: str) -> None:
+    t = demo.THEMES[theme]
+    # The glass panel over the page, and over the brightest point of each glow.
+    backs = [t["panel"], over(t["panel"], demo.PANEL_ALPHA[theme], t["bg"])]
+    for i in (1, 2, 3):
+        glow = over(t[f"glow-{i}"], demo.GLOW_ALPHA[theme], t["bg"])
+        backs.append(over(t["panel"], demo.PANEL_ALPHA[theme], glow))
+    for token in demo.TEXT_TOKENS:
+        for back in backs:
+            assert contrast(t[token], back) >= 4.5, (theme, token, back)
+    for chip in demo.CHIPS:
+        assert contrast(t[f"{chip}-text"], t[chip]) >= 4.5, (theme, chip)
+
+
+def test_page_has_no_emoji_dashes_or_ai_wording(page_path: Path) -> None:
+    _, _, page = run_page(page_path)
+    assert page.isascii(), "no emoji, no em or en dashes, no other symbols"
+    for word in ("generated", " ai ", "ai-", "powered", "seamless", "robust", "leverage"):
+        assert word not in page.lower(), word
 
 
 def test_page_without_a_saved_result_says_so(page_path: Path) -> None:
