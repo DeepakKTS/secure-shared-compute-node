@@ -203,7 +203,8 @@ def test_summary_shows_each_item() -> None:
         "  fail2ban sshd    jail up; banned now 0 (total 2), failed logins now 1 (total 7)",
         "  /tmp             tmpfs rw,nosuid,nodev,noexec,size=524288k",
         "  /dev/shm         tmpfs rw,nosuid,nodev,noexec",
-        "  sudo rights      alice: none, bob: none",
+        "  sudo alice       no rights",
+        "  sudo bob         no rights",
         PHASE2_PASS,
     ):
         assert line in text.splitlines(), (line, text)
@@ -542,7 +543,7 @@ def test_secure_values_are_green_and_a_missing_vm_red(page_path: Path) -> None:
         "passwordauthentication no, permitrootlogin no, kbdinteractiveauthentication no",
         "accept (inet f2b-table, fail2ban bans only), drop (inet ssc_filter)",
         "tmpfs rw,nosuid,nodev,noexec,size=524288k",
-        "alice: none, bob: none",
+        "no rights",
     ):
         assert f'<dd class="ok">{value}</dd>' in page, value
     assert '<dt>ssc-attacker</dt><dd class="down">not created</dd>' in page
@@ -978,7 +979,34 @@ def test_research_user_with_sudo_rights_is_flagged() -> None:
     granted = "User alice may run the following commands on ssc-node:\n    (ALL) ALL\n"
     code, text = run_demo(FakeLab(node={"sudo -n sudo -l -U alice": granted}))
     assert code == 1
-    assert "  sudo rights      alice: HAS SUDO RIGHTS, bob: none" in text.splitlines()
+    assert "  sudo alice       HAS SUDO RIGHTS" in text.splitlines()
+    assert "  sudo bob         no rights" in text.splitlines()
+
+
+def test_each_sudo_command_has_its_own_result_line(page_path: Path) -> None:
+    # Each user's prompt is followed by that user's row, before the next prompt.
+    _, _, page = run_page(page_path)
+    for user in demo.research_users():
+        command = html.escape(demo.SUDO_LIST.format(user=user))
+        block = page.split(f'<span class="cmd">{command}</span></p>', 1)[1]
+        block = block.split('<p class="prompt', 1)[0]
+        assert re.findall(r"<dt[^>]*>([^<]*)</dt>", block) == [f"sudo {user}"], block
+        assert f'<dt>sudo {user}</dt><dd class="ok">no rights</dd>' in block
+
+
+class AliceListFails(FakeLab):
+    def __call__(self, argv, env):
+        if argv[0] == "ssh" and argv[-1] == "sudo -n sudo -l -U alice":
+            self.calls.append((argv, env))
+            return completed(argv, 1, "", "sudo: a password is required")
+        return super().__call__(argv, env)
+
+
+def test_one_unreadable_sudo_listing_keeps_the_others() -> None:
+    code, text = run_demo(AliceListFails())
+    assert code == 1
+    assert "  sudo alice       ERROR: could not list" in text.splitlines()
+    assert "  sudo bob         no rights" in text.splitlines()
 
 
 def test_unreachable_node_is_an_error() -> None:

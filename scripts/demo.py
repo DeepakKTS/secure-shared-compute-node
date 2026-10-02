@@ -491,21 +491,16 @@ class Demo:
             self.row(path, " ".join(line.split()), "ok" if secure else "info")
 
     def sudo_rights(self) -> None:
-        rights = []
-        granted = False
+        # One command per user, so each gets its own result line.
         for user in research_users():
             listing = self.node(SUDO_LIST.format(user=user))
             if listing is None:
-                self.problem("sudo rights", f"could not list {user}")
-                return
-            if "is not allowed to run sudo" in listing:
-                rights.append(f"{user}: none")
+                self.problem(f"sudo {user}", "could not list")
+            elif "is not allowed to run sudo" in listing:
+                self.row(f"sudo {user}", "no rights", "ok")
             else:
-                granted = True
-                rights.append(f"{user}: HAS SUDO RIGHTS")
-        if granted:
-            self.ok = False
-        self.row("sudo rights", ", ".join(rights), "error" if granted else "ok")
+                self.ok = False
+                self.row(f"sudo {user}", "HAS SUDO RIGHTS", "error")
 
     def phase2(self) -> None:
         result = self.runner(pytest_argv(), pytest_env())
