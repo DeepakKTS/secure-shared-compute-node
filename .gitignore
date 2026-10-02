@@ -15,4 +15,6 @@ __pycache__/
 # .lab/vault_pass, which .lab/ already covers; these catch stray copies.
 .vault_pass*
 .vault-pass*
+# Claude Code keeps each person's own permission rules here.
+.claude/settings.local.json
 .DS_Store

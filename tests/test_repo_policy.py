@@ -115,6 +115,8 @@ SECRET_PATHS = (
     "inventory/.lab.yml.tmp",
     ".venv/bin/python",
     ".ansible/collections/x",
+    # Claude Code writes the owner's own permission rules here.
+    ".claude/settings.local.json",
 )
 
 
@@ -124,7 +126,12 @@ def git(*args: str) -> subprocess.CompletedProcess[str]:
 
 @pytest.mark.parametrize("path", SECRET_PATHS)
 def test_secret_and_generated_paths_are_gitignored(path: str) -> None:
-    assert git("check-ignore", "-q", "--no-index", path).returncode == 0, f"{path} not ignored"
+    # The rule must come from the repo's .gitignore. A global ignore file or
+    # .git/info/exclude covers only this machine, not a fresh clone.
+    result = git("check-ignore", "-v", "--no-index", path)
+    assert result.returncode == 0, f"{path} not ignored"
+    source = result.stdout.split(":", 1)[0]
+    assert source == ".gitignore", f"{path} ignored only by {source}, not the repo's .gitignore"
 
 
 def test_example_inventory_is_not_ignored() -> None:
@@ -221,6 +228,26 @@ UNRESTRICTED_PROBES = {
         "gh api repos/DeepakKTS/secure-shared-compute-node -X DELETE",
         "gh api graphql -f query=x",
     ],
+    # A browser fetches any URL it is given, as curl does. `open` and
+    # `xdg-open` hand a URL to the default browser.
+    "browser": [
+        "open https://example.com/x",
+        "/usr/bin/open -a Safari https://example.com/x",
+        "xdg-open https://example.com/x",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome https://example.com/x",
+        '"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" https://example.com/x',
+        "/Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome https://example.com/x",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --headless=new"
+        " --screenshot=x.png https://example.com/x",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium https://example.com/x",
+        "/Applications/Firefox.app/Contents/MacOS/firefox https://example.com/x",
+        "/Applications/Safari.app/Contents/MacOS/Safari https://example.com/x",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge https://example.com/x",
+        "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser https://example.com/x",
+        "google-chrome https://example.com/x",
+        "chromium --headless https://example.com/x",
+        "firefox https://example.com/x",
+    ],
 }
 
 
@@ -249,6 +276,15 @@ def unrestricted_rules(allow: list[str]) -> list[tuple[str, str]]:
         "Bash(gh:*)",
         "Bash(gh api:*)",
         "Bash(gh api *)",
+        "Bash(/Applications/Google Chrome.app/Contents/MacOS/Google Chrome *)",
+        'Bash("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome":*)',
+        "Bash(/Applications/*)",
+        "Bash(open:*)",
+        "Bash(open *)",
+        "Bash(/usr/bin/open:*)",
+        "Bash(xdg-open:*)",
+        "Bash(firefox *)",
+        "Bash(chromium:*)",
     ],
 )
 def test_unrestricted_rule_is_found(rule: str) -> None:
@@ -264,6 +300,10 @@ def test_unrestricted_rule_is_found(rule: str) -> None:
         "Bash(gh run:*)",
         "Bash(git branch *)",
         "Read(//private/tmp/**)",
+        # One fixed local page, as in the shared settings.
+        "Bash(open .lab/demo/index.html)",
+        'Bash("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new'
+        " --screenshot=x.png file:///Users/x/repo/.lab/demo/index.html)",
     ],
 )
 def test_restricted_rule_is_not_flagged(rule: str) -> None:
@@ -272,7 +312,8 @@ def test_restricted_rule_is_not_flagged(rule: str) -> None:
 
 def test_claude_local_settings_allow_nothing_unrestricted() -> None:
     # The owner's own .claude/settings.local.json (gitignored, absent in CI)
-    # must not undo rule 1 or the python3 decision with a broad allow rule.
+    # must not undo rule 1 or the python3 decision with a broad allow rule,
+    # or let a browser fetch any URL.
     local = ROOT / ".claude" / "settings.local.json"
     if not local.exists():
         return
