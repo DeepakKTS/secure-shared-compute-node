@@ -117,6 +117,8 @@ class Lab:
         self.state = tmp / "mp_state.json"
         self.log = tmp / "mp_log.txt"
         self.log.write_text("")
+        # HOME is tmp, so lab.sh keeps its keys here, outside the repo copy.
+        self.keys = tmp / ".config" / "ssc-lab" / "keys"
         self.env = {
             "PATH": f"{self.bin}:/usr/bin:/bin",
             "HOME": str(tmp),
@@ -206,9 +208,11 @@ def test_up_creates_three_vms_with_documented_sizes(lab: Lab) -> None:
 
 def test_up_generates_private_key_and_renders_cloud_init(lab: Lab) -> None:
     assert lab.run("up").returncode == 0
-    key = lab.root / ".lab" / "keys" / "ssc_admin_ed25519"
+    key = lab.keys / "ssc_admin_ed25519"
     assert stat.S_IMODE(key.stat().st_mode) == 0o600
+    assert stat.S_IMODE(lab.keys.stat().st_mode) == 0o700
     assert stat.S_IMODE((lab.root / ".lab").stat().st_mode) == 0o700
+    assert not (lab.root / ".lab" / "keys").exists(), "no key inside the repo"
     rendered = (lab.root / ".lab" / "cloud-init.yaml").read_text()
     assert rendered.startswith("#cloud-config\n")
     assert stat.S_IMODE((lab.root / ".lab" / "cloud-init.yaml").stat().st_mode) == 0o600
@@ -223,11 +227,46 @@ def test_up_generates_private_key_and_renders_cloud_init(lab: Lab) -> None:
 
 def test_up_is_idempotent_and_keeps_the_key(lab: Lab) -> None:
     assert lab.run("up").returncode == 0
-    key = lab.root / ".lab" / "keys" / "ssc_admin_ed25519"
+    key = lab.keys / "ssc_admin_ed25519"
     first_key = key.read_text()
     assert lab.run("up").returncode == 0
     assert len(launches(lab)) == 3
     assert key.read_text() == first_key
+
+
+def test_up_refuses_a_key_left_in_the_old_place(lab: Lab) -> None:
+    # A new key would not log in to VMs made with the old one: move, never replace.
+    old = lab.root / ".lab" / "keys" / "ssc_admin_ed25519"
+    old.parent.mkdir(parents=True)
+    old.write_text("old key")
+    result = lab.run("up")
+    assert result.returncode != 0
+    assert "Lab keys now live in" in result.stderr
+    assert launches(lab) == []
+    assert not (lab.keys / "ssc_admin_ed25519").exists(), "no new key made"
+    assert old.read_text() == "old key"
+
+
+def test_key_dir_is_the_same_everywhere(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # lab.sh, gen_inventory.py, the users role, the guard hook and the Claude
+    # Code deny rule must all name one directory, outside the repo.
+    assert 'KEY_DIR="${HOME:?}/.config/ssc-lab/keys"' in (ROOT / "scripts" / "lab.sh").read_text()
+    sys.path.insert(0, str(ROOT / "scripts"))
+    try:
+        import gen_inventory
+    finally:
+        sys.path.pop(0)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert gen_inventory.lab_key_dir() == tmp_path / ".config" / "ssc-lab" / "keys"
+    defaults = yaml.safe_load((ROOT / "roles" / "users" / "defaults" / "main.yml").read_text())
+    assert defaults["users_lab_key_dir"] == (
+        "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/ssc-lab/keys"
+    )
+    hook = (ROOT / ".claude" / "hooks" / "guard_delete.py").read_text()
+    assert "HOME = Path(pwd.getpwuid(os.getuid()).pw_dir)" in hook
+    assert 'KEYS = Path(os.path.realpath(HOME / ".config" / "ssc-lab" / "keys"))' in hook
+    settings = json.loads((ROOT / ".claude" / "settings.json").read_text())
+    assert "Read(~/.config/ssc-lab/keys/**)" in settings["permissions"]["deny"]
 
 
 def test_up_starts_a_stopped_vm(lab: Lab) -> None:
@@ -341,21 +380,42 @@ def test_down_refuses_any_answer_but_yes(lab: Lab, answer: str) -> None:
 def test_down_typed_yes_deletes_only_lab_vms(lab: Lab) -> None:
     lab.set_vms({"ssc-node": "Running", "other-vm": "Running", "ssc-attacker": "Stopped"})
     lab_dir = lab.root / ".lab"
-    (lab_dir / "keys").mkdir(parents=True)
+    lab_dir.mkdir()
     generated = [
         lab.root / "inventory" / "lab.yml",
         lab_dir / "known_hosts",
         lab_dir / "ssh_config",
     ]
-    for path in [*generated, lab_dir / "keys" / "ssc_admin_ed25519"]:
+    for path in generated:
         path.write_text("x")
+    lab.keys.mkdir(parents=True, mode=0o700)
+    names = ("ssc_admin_ed25519", "ssc_admin_ed25519.pub", "alice_ed25519", "alice_ed25519.pub")
+    keys = {name: f"key {name}" for name in names}
+    for name, text in keys.items():
+        (lab.keys / name).write_text(text)
+        (lab.keys / name).chmod(0o600)
     code, output = lab.run_on_tty("yes", "down")
     assert code == 0, output
     assert "delete --purge ssc-node ssc-attacker" in lab.calls()
     assert not any(c.split()[0] == "purge" for c in lab.calls()), "never a bare multipass purge"
     assert "other-vm" in json.loads(lab.state.read_text())
     assert not any(p.exists() for p in generated)
-    assert (lab_dir / "keys" / "ssc_admin_ed25519").exists(), "down keeps the keys"
+    # down never touches the key directory: same files, text and modes.
+    assert sorted(p.name for p in lab.keys.iterdir()) == sorted(keys), "down keeps the keys"
+    for name, text in keys.items():
+        assert (lab.keys / name).read_text() == text
+        assert stat.S_IMODE((lab.keys / name).stat().st_mode) == 0o600
+    assert stat.S_IMODE(lab.keys.stat().st_mode) == 0o700
+
+
+def test_down_names_no_key_path() -> None:
+    # Read the code too: nothing in cmd_down may name the key directory but
+    # the message that says it was kept.
+    text = (ROOT / "scripts" / "lab.sh").read_text()
+    body = text.split("cmd_down() {", 1)[1].split("\n}\n", 1)[0]
+    code = [line for line in body.splitlines() if not line.strip().startswith("#")]
+    named = [line for line in code if "KEY" in line and "kept the keys" not in line]
+    assert named == [], named
 
 
 def execs(lab: Lab) -> list[str]:

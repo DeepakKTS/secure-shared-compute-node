@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PreToolUse hook for the Bash tool: block deletes outside this repo's .lab/
-and build output, and writes into .lab/keys or tracked files (docs/AUTONOMY.md,
-"Deleting files").
+and build output, and writes into the lab key directory or tracked files
+(docs/AUTONOMY.md, "Deleting files").
 
 Claude Code sends the tool call as JSON on stdin. Exit 0 lets the command
 run. Exit 2 blocks it, and stderr tells Claude why. The settings entry turns
@@ -19,21 +19,24 @@ The hook never runs the command; it reads the text.
   cannot be checked, so it blocks. VM cleanup goes through a fixed script or
   an Ansible task instead.
 - Each target of a delete must be a plain path (no $, backquote, glob, ~,
-  backslash or '..') strictly inside .lab/ but not .lab/keys, or inside build
-  output: .venv/, .pytest_cache/, .ruff_cache/, or a __pycache__/ in the repo.
-  mv onto /dev/null always blocks.
+  backslash or '..') strictly inside .lab/, or inside build output: .venv/,
+  .pytest_cache/, .ruff_cache/, or a __pycache__/ in the repo. The lab keys
+  live outside the repo (~/.config/ssc-lab/keys), so no allowed delete
+  reaches them. mv onto /dev/null always blocks.
 - Deletes written as code (os.remove, os.unlink, shutil.rmtree, .unlink(),
   rmtree, as in python3 -c or perl -e) always block: the hook cannot check
   their targets.
-- A > redirect may not write into .lab/keys or a file git tracks in this repo
-  (file changes go through the Edit and Write tools), or to a path the hook
-  cannot predict.
+- A > redirect may not write into the lab key directory or a file git tracks
+  in this repo (file changes go through the Edit and Write tools), or to a
+  path the hook cannot predict. Redirects elsewhere outside the repo are
+  allowed, so the key directory needs its own check.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import pwd
 import re
 import shlex
 import subprocess
@@ -43,7 +46,10 @@ from pathlib import Path
 # A fixed root: the repo this file is in, never a variable from the caller.
 ROOT = Path(os.path.realpath(Path(__file__).parent.parent.parent))
 LAB = ROOT / ".lab"
-KEYS = LAB / "keys"
+# KEY_DIR in scripts/lab.sh. The home directory comes from the account
+# database, not $HOME, so the caller's environment cannot move it.
+HOME = Path(pwd.getpwuid(os.getuid()).pw_dir)
+KEYS = Path(os.path.realpath(HOME / ".config" / "ssc-lab" / "keys"))
 BUILD = [ROOT / ".venv", ROOT / ".pytest_cache", ROOT / ".ruff_cache"]
 DEV_NULL = "/dev/null"
 
@@ -138,8 +144,6 @@ def delete_target_problem(target: str, cwd: str | None, changes_dir: bool) -> st
     real = resolve(target, cwd, changes_dir)
     if isinstance(real, str):
         return real
-    if inside(real, KEYS):
-        return f"{target!r} is in .lab/keys (the lab's SSH keys)"
     if real != LAB and inside(real, LAB):
         return None
     if any(inside(real, build) for build in BUILD):
@@ -171,7 +175,7 @@ def redirect_problem(op: str, target: str, cwd: str | None, changes_dir: bool) -
     if isinstance(real, str):
         return f"a {op} redirect: {real}"
     if inside(real, KEYS):
-        return f"a {op} redirect into .lab/keys"
+        return f"a {op} redirect into {KEYS} (the lab's SSH keys)"
     if inside(real, ROOT) and real.relative_to(ROOT).as_posix() in tracked_files():
         return f"a {op} redirect onto {target!r}, a file git tracks (use the Edit or Write tool)"
     return None
@@ -309,7 +313,7 @@ def main() -> int:
     log_block(reason, command, cwd)
     print(
         f"Blocked by .claude/hooks/guard_delete.py: {reason}. Deletes on this host are "
-        "allowed only inside .lab/ (not .lab/keys) and build output, and tracked files "
+        "allowed only inside .lab/ and build output, and tracked files "
         "change only through the Edit and Write tools. VM cleanup goes through a fixed "
         "script or an Ansible task (docs/AUTONOMY.md).",
         file=sys.stderr,

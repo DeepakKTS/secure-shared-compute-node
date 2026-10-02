@@ -9,6 +9,7 @@ nothing is written to this repo's .lab/. These need no VMs.
 
 import json
 import os
+import pwd
 import shutil
 import subprocess
 from pathlib import Path
@@ -18,6 +19,9 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 SETTINGS = json.loads((ROOT / ".claude" / "settings.json").read_text())
 INTERPRETER = "/usr/bin/python3"
+# The lab key directory as the hook computes it (KEY_DIR in scripts/lab.sh).
+HOME = Path(pwd.getpwuid(os.getuid()).pw_dir)
+KEYS = Path(os.path.realpath(HOME / ".config" / "ssc-lab" / "keys"))
 
 # The two slips, exactly as the Bash tool ran them (P2.5 and P2.7 sessions).
 SLIP_1 = r"""cd /Users/deepakzedler/Downloads/secure-shared-compute-node && grep -nE "^#|^\|" docs/VERSIONS.md | head -60; rm -rf /dev/null 2>/dev/null; ssh -F .lab/ssh_config -o ControlPath=none ssc-node 'rm -rf /tmp/tmp.HehpnjiNb0'"""  # noqa: E501
@@ -29,7 +33,7 @@ BLOCKED = [
     # The delete part of each slip on its own.
     pytest.param("rm -rf /dev/null 2>/dev/null", id="slip1-alone"),
     pytest.param("rm -f /dev/null.bak 2>/dev/null; true", id="slip2-alone"),
-    # git clean, any flags; -x would reach the ignored .lab/keys.
+    # git clean, any flags; -x would reach the ignored .lab/.
     "git clean -fdx",
     "git clean -n",
     "git clean -fdx .lab",
@@ -37,9 +41,9 @@ BLOCKED = [
     "bash -c 'git clean -fdx'",
     # shred and truncate.
     "shred -u secrets.txt",
-    "shred -u .lab/keys/admin_ed25519",
+    "shred -u {keys}/ssc_admin_ed25519",
     "truncate -s 0 README.md",
-    "truncate -s 0 .lab/keys/admin_ed25519",
+    "truncate -s 0 {keys}/ssc_admin_ed25519",
     # rsync with a delete option.
     "rsync -a --delete src/ ./",
     "rsync -a --delete .lab/a/ ssc-node:/tmp/x/",
@@ -57,8 +61,13 @@ BLOCKED = [
     "python3 -c 'from pathlib import Path; Path(\"x\").unlink()'",
     "perl -e 'unlink \"README.md\"'",
     "perl -MFile::Path=rmtree -e 'rmtree(\"x\")'",
-    # > redirects into .lab/keys, onto tracked files, or to unknown paths.
-    "echo x > .lab/keys/admin_ed25519",
+    # > redirects into the key directory, onto tracked files, or to unknown
+    # paths. Other redirects outside the repo are allowed, so the key
+    # directory needs its own check.
+    "echo x > {keys}/ssc_admin_ed25519",
+    "echo x >> {keys}/alice_ed25519.pub",
+    "echo x > {keys}/new_file",
+    "echo x > ~/.config/ssc-lab/keys/ssc_admin_ed25519",
     "cat /dev/null > README.md",
     "echo x >> ansible.cfg",
     "printf 'a: 1\\n' > inventory/group_vars/all.yml",
@@ -66,11 +75,13 @@ BLOCKED = [
     "echo x > $HOME/notes.txt",
     # Chained, with a target outside the allowed paths.
     "git status && rm -f README.md",
-    # Outside .lab/ and build output, or .lab itself and its keys.
+    # Outside .lab/ and build output (the lab keys are outside), or .lab itself.
     "rm -rf build/",
     "rm -r .lab",
-    "rm -r .lab/keys",
-    "rm -f .lab/keys/admin_ed25519",
+    "rm -r {keys}",
+    "rm -f {keys}/ssc_admin_ed25519",
+    "rm -f ~/.config/ssc-lab/keys/ssc_admin_ed25519",
+    "find {keys} -delete",
     "find .lab -delete",
     "rm -f .lab/../README.md",
     "rm -f ~/.ssh/id_ed25519",
@@ -107,6 +118,8 @@ ALLOWED = [
     "rm -rf .pytest_cache .ruff_cache",
     "rm -rf tests/__pycache__",
     "find .lab/lynis -name '*.dat' -delete",
+    # The keys moved out of the repo, so .lab/keys is an ordinary .lab/ path.
+    "rm -f .lab/keys/stale_ed25519",
     # Chained, with every target allowed. (AUTONOMY.md still says: do not chain.)
     "git status && rm -f .lab/lynis/old.json",
     # The new delete commands with allowed targets.
@@ -177,7 +190,7 @@ def run_hook(
 
 
 def payload(command: str, root: Path) -> str:
-    command = command.replace("{root}", str(root))
+    command = command.replace("{root}", str(root)).replace("{keys}", str(KEYS))
     return json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(root)})
 
 
@@ -197,6 +210,17 @@ def test_blocks(repo: Path, command: str) -> None:
 def test_allows(repo: Path, command: str) -> None:
     result = run_hook(repo, payload(command, repo))
     assert result.returncode == 0, (command, result.stderr)
+
+
+def test_a_symlink_in_lab_cannot_reach_the_keys(repo: Path) -> None:
+    # The hook resolves symlinks, so a link under .lab/ to the key directory
+    # is checked as the key directory, which is outside .lab/.
+    link = repo / ".lab" / "keys-link"
+    link.parent.mkdir(parents=True, exist_ok=True)
+    if not link.is_symlink():
+        link.symlink_to(KEYS, target_is_directory=True)
+    for command in ("rm -f .lab/keys-link/ssc_admin_ed25519", "echo x > .lab/keys-link/x"):
+        assert run_hook(repo, payload(command, repo)).returncode == 2, command
 
 
 def test_hook_reads_the_command_and_never_runs_it(repo: Path, tmp_path: Path) -> None:

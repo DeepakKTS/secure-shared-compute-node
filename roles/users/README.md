@@ -18,7 +18,8 @@ Runs on the node and the monitor. Research users exist only on the node. The mon
 | `users_research` | `[]` | `{name, ssh_public_key}`; the lab sets alice and bob in `group_vars/node.yml` |
 | `users_research_group` | `ssc-users` | sshd's `AllowGroups` lists it (P2.3) |
 | `users_home_mode` | `0700` | |
-| `users_generate_lab_keys` | `false` | the lab sets `true`: a key pair per user in `.lab/keys/<name>_ed25519` |
+| `users_generate_lab_keys` | `false` | the lab sets `true`: a key pair per user in `~/.config/ssc-lab/keys/<name>_ed25519` on the controller |
+| `users_lab_key_dir` | `~/.config/ssc-lab/keys` | outside the repo, next to the admin key from `scripts/lab.sh` |
 | `users_sudo_nopasswd` | admin, ubuntu | written to `/etc/sudoers.d/90-cloud-init-users` |
 
 On DASH, set `users_generate_lab_keys: false` and give each user's own `ssh_public_key`. The admin's passwordless sudo is a lab convenience. On DASH the admin key should have a passphrase or live on a hardware key.

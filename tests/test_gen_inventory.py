@@ -237,14 +237,16 @@ def test_detect_controller_fails_closed() -> None:
         gi.detect_controller_ip(lambda cmd: "")
 
 
-def test_inventory_vars_and_groups(tmp_path: Path) -> None:
+def test_inventory_vars_and_groups(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     hosts = gi.lab_hosts(gi.lab_vms(FULL, "full"), NET)
     inventory = gi.build_inventory(hosts, "full", NET, CONTROLLER, "ssc-admin", tmp_path)
     variables = inventory["all"]["vars"]
     assert variables["ansible_user"] == "ssc-admin"
     key = Path(variables["ansible_ssh_private_key_file"])
     assert key.is_absolute()
-    assert key == tmp_path / ".lab" / "keys" / "ssc_admin_ed25519"
+    # The key lives outside the repo (scripts/lab.sh KEY_DIR).
+    assert key == tmp_path / "home" / ".config" / "ssc-lab" / "keys" / "ssc_admin_ed25519"
     ssh_args = variables["ansible_ssh_common_args"]
     assert "-o IdentitiesOnly=yes" in ssh_args
     assert f"-o UserKnownHostsFile={tmp_path / '.lab' / 'known_hosts'}" in ssh_args
@@ -278,10 +280,12 @@ def test_bad_controller_ip_is_refused(tmp_path: Path, controller: str, message: 
         gi.build_inventory(hosts, "full", NET, IPv4Address(controller), "ssc-admin", tmp_path)
 
 
-def test_ssh_config_blocks(tmp_path: Path) -> None:
+def test_ssh_config_blocks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     text = gi.render_ssh_config(gi.lab_hosts(gi.lab_vms(FULL, "full"), NET), "ssc-admin", tmp_path)
     assert "Host ssc-node\n  HostName 192.168.64.10\n  User ssc-admin\n" in text
-    assert f'IdentityFile "{tmp_path / ".lab" / "keys" / "ssc_admin_ed25519"}"' in text
+    key = tmp_path / "home" / ".config" / "ssc-lab" / "keys" / "ssc_admin_ed25519"
+    assert f'IdentityFile "{key}"' in text
     assert text.count("IdentitiesOnly yes") == 3
     assert "StrictHostKeyChecking no" not in text
 

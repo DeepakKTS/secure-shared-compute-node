@@ -143,7 +143,8 @@ def test_claude_permissions_guard_destructive_actions() -> None:
         "Bash(git push --force:*)",
         "Bash(git push -f:*)",
         "Bash(git push --force-with-lease:*)",
-        "Read(./.lab/keys/**)",
+        # The lab keys live outside the repo (scripts/lab.sh KEY_DIR).
+        "Read(~/.config/ssc-lab/keys/**)",
     ):
         assert rule in perms["deny"], f"{rule} must be denied"
     assert "Bash(ssh:*)" not in perms["allow"], "ssh to any host breaks rule 1 (lab only)"
@@ -172,8 +173,112 @@ def test_claude_permissions_guard_destructive_actions() -> None:
         # `*` works anywhere in a rule; no space before the last `*`, so
         # `-delete` at the end matches too.
         "Bash(find * -delete*)",
+        # The allow list has `git branch:*` and `gh run:*`; ask wins over
+        # allow, so these still prompt.
+        "Bash(git branch -D:*)",
+        "Bash(gh run delete:*)",
     ):
         assert rule in perms["ask"], f"{rule} must ask first"
+
+
+def test_claude_gh_api_allow_rule_is_read_only() -> None:
+    # One exact command, the ruleset check in CLAUDE.md section 8, item 9. No
+    # wildcard, so `-X DELETE` or another endpoint does not match it.
+    perms = json.loads((ROOT / ".claude" / "settings.json").read_text())["permissions"]
+    gh_api = [rule for rule in perms["allow"] if rule.startswith("Bash(gh api")]
+    assert gh_api == ["Bash(gh api repos/DeepakKTS/secure-shared-compute-node/rules/branches/main)"]
+
+
+def rule_matches(rule: str, command: str) -> bool:
+    """Whether a Claude Code Bash rule matches a command: `*` is any text and a
+    trailing `:*` means a trailing ` *` (code.claude.com/docs/en/permissions)."""
+    if rule == "Bash":
+        return True
+    match = re.fullmatch(r"Bash\((.*)\)", rule, re.DOTALL)
+    if not match:
+        return False
+    pattern = match.group(1)
+    if pattern.endswith(":*"):
+        pattern = pattern[:-2] + " *"
+    regex = ".*".join(re.escape(part) for part in pattern.split("*"))
+    return re.fullmatch(regex, command, re.DOTALL) is not None
+
+
+# Commands an allow rule in settings.local.json must not match. Nothing here
+# is run. The addresses are documentation ranges (RFC 5737), never the lab.
+UNRESTRICTED_PROBES = {
+    "ssh": ["ssh 203.0.113.5 true", "/usr/bin/ssh -o BatchMode=yes 203.0.113.5 true"],
+    "curl": ["curl https://example.com/x", "/usr/bin/curl -s https://example.com/x"],
+    "wget": ["wget https://example.com/x", "/usr/bin/wget -q https://example.com/x"],
+    "python": [
+        "python3 -c 'print(1)'",
+        "python -c 'print(1)'",
+        "/usr/bin/python3 -c 'print(1)'",
+        ".venv/bin/python -c 'print(1)'",
+        "python3 /tmp/any.py",
+    ],
+    "gh api": [
+        "gh api repos/DeepakKTS/secure-shared-compute-node -X DELETE",
+        "gh api graphql -f query=x",
+    ],
+}
+
+
+def unrestricted_rules(allow: list[str]) -> list[tuple[str, str]]:
+    return [
+        (tool, rule)
+        for rule in allow
+        for tool, probes in UNRESTRICTED_PROBES.items()
+        if any(rule_matches(rule, probe) for probe in probes)
+    ]
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        "Bash",
+        "Bash(*)",
+        "Bash(ssh:*)",
+        "Bash(ssh *)",
+        "Bash(curl:*)",
+        "Bash(wget *)",
+        "Bash(python3:*)",
+        "Bash(python -c:*)",
+        "Bash(/usr/bin/*)",
+        "Bash(.venv/bin/*)",
+        "Bash(gh:*)",
+        "Bash(gh api:*)",
+        "Bash(gh api *)",
+    ],
+)
+def test_unrestricted_rule_is_found(rule: str) -> None:
+    assert unrestricted_rules([rule]), f"{rule} should count as unrestricted"
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        "Bash(ssh -F .lab/ssh_config ssc-node:*)",
+        "Bash(.venv/bin/python -B scripts/demo.py --html)",
+        "Bash(gh api repos/DeepakKTS/secure-shared-compute-node/rules/branches/main)",
+        "Bash(gh run:*)",
+        "Bash(git branch *)",
+        "Read(//private/tmp/**)",
+    ],
+)
+def test_restricted_rule_is_not_flagged(rule: str) -> None:
+    assert unrestricted_rules([rule]) == []
+
+
+def test_claude_local_settings_allow_nothing_unrestricted() -> None:
+    # The owner's own .claude/settings.local.json (gitignored, absent in CI)
+    # must not undo rule 1 or the python3 decision with a broad allow rule.
+    local = ROOT / ".claude" / "settings.local.json"
+    if not local.exists():
+        return
+    allow = json.loads(local.read_text()).get("permissions", {}).get("allow", [])
+    found = unrestricted_rules(allow)
+    assert found == [], f"settings.local.json allows too much: {found}"
 
 
 def test_claude_ssh_allow_rules_name_only_lab_hosts() -> None:

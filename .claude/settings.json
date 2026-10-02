@@ -40,7 +40,8 @@
       "Bash(wc:*)",
       "Bash(jq:*)",
       "Bash(sleep:*)",
-      "Bash(open .lab/demo/index.html)"
+      "Bash(open .lab/demo/index.html)",
+      "Bash(gh api repos/DeepakKTS/secure-shared-compute-node/rules/branches/main)"
     ],
     "ask": [
       "Bash(multipass delete:*)",
@@ -58,10 +59,12 @@
       "Bash(rm -fr:*)",
       "Bash(rm -R:*)",
       "Bash(/bin/rm:*)",
-      "Bash(find * -delete*)"
+      "Bash(find * -delete*)",
+      "Bash(git branch -D:*)",
+      "Bash(gh run delete:*)"
     ],
     "deny": [
-      "Read(./.lab/keys/**)",
+      "Read(~/.config/ssc-lab/keys/**)",
       "Bash(git push --force:*)",
       "Bash(rm -rf /:*)",
       "Bash(git push -f:*)",

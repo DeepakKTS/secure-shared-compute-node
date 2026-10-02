@@ -16,7 +16,14 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LAB_DIR="$ROOT/.lab"
-KEY="$LAB_DIR/keys/ssc_admin_ed25519"
+# The lab keys live outside the repo, so no repo command (a recursive grep, a
+# cleanup of .lab/) can reach them. A fixed path, not XDG_CONFIG_HOME: the
+# Claude Code deny rule in .claude/settings.json names this path. The same
+# path is in scripts/gen_inventory.py and roles/users (a unit test checks it).
+KEY_DIR="${HOME:?}/.config/ssc-lab/keys"
+KEY="$KEY_DIR/ssc_admin_ed25519"
+# Where the keys were before 2026-10-01. lab.sh never reads them there.
+OLD_KEY="$LAB_DIR/keys/ssc_admin_ed25519"
 CLOUD_INIT_TMPL="$ROOT/scripts/cloud-init.yaml.tmpl"
 CLOUD_INIT="$LAB_DIR/cloud-init.yaml"
 KNOWN_HOSTS="$LAB_DIR/known_hosts"
@@ -121,8 +128,15 @@ vm_state() {
 }
 
 ensure_key() {
-    mkdir -p "$LAB_DIR/keys"
-    chmod 700 "$LAB_DIR" "$LAB_DIR/keys"
+    # A key left in the old place must be moved, not replaced: a new key
+    # would not log in to VMs made with the old one.
+    if [ -e "$OLD_KEY" ]; then
+        die "found $OLD_KEY. Lab keys now live in $KEY_DIR. Move the files in $LAB_DIR/keys there (keep the same key), then rerun."
+    fi
+    mkdir -p "$LAB_DIR"
+    chmod 700 "$LAB_DIR"
+    (umask 077 && mkdir -p "$KEY_DIR")
+    chmod 700 "$KEY_DIR"
     if [ ! -f "$KEY" ]; then
         ssh-keygen -q -t ed25519 -N "" -C "$ADMIN_USER@ssc-lab" -f "$KEY"
         info "generated admin key $KEY"
@@ -275,8 +289,9 @@ cmd_down() {
         # shellcheck disable=SC2086 # the VM list is meant to split into words
         multipass delete --purge $existing
     fi
+    # Never the keys in $KEY_DIR: the next `up` reuses them.
     rm -f "$ROOT/inventory/lab.yml" "$KNOWN_HOSTS" "$KNOWN_HOSTS.old" "$LAB_DIR/ssh_config" "$CLOUD_INIT"
-    info "removed the generated inventory and SSH files; kept the keys in $LAB_DIR/keys"
+    info "removed the generated inventory and SSH files; kept the keys in $KEY_DIR"
 }
 
 cmd_status() {
@@ -297,11 +312,11 @@ cmd_status() {
     else
         echo "multipass: not installed"
     fi
-    for f in inventory/lab.yml .lab/ssh_config .lab/keys/ssc_admin_ed25519; do
-        if [ -e "$ROOT/$f" ]; then
-            echo "$f: present"
+    for f in "$ROOT/inventory/lab.yml" "$LAB_DIR/ssh_config" "$KEY"; do
+        if [ -e "$f" ]; then
+            echo "${f#"$ROOT/"}: present"
         else
-            echo "$f: missing"
+            echo "${f#"$ROOT/"}: missing"
         fi
     done
 }

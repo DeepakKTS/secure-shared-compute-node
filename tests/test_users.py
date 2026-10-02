@@ -54,7 +54,9 @@ def test_research_user_logs_in_with_its_key(host) -> None:
     for user in research_users(host):
         if "ssh_public_key" in user:
             continue  # a real user's key; the lab holds no private half
-        key = LAB / "keys" / f"{user['name']}_ed25519"
+        # Research user keys sit next to the admin key, outside the repo.
+        key_dir = Path(variables(host)["ansible_ssh_private_key_file"]).parent
+        key = key_dir / f"{user['name']}_ed25519"
         result = subprocess.run(
             [
                 "ssh",

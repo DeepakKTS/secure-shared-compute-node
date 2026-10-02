@@ -58,6 +58,11 @@ class InventoryError(Exception):
     """The VMs do not form a lab we can safely write an inventory for."""
 
 
+def lab_key_dir() -> Path:
+    """The lab SSH keys, outside the repo. Same path as KEY_DIR in scripts/lab.sh."""
+    return Path.home() / ".config" / "ssc-lab" / "keys"
+
+
 def in_rfc1918(network: ipaddress.IPv4Network) -> bool:
     return any(network.subnet_of(block) for block in RFC1918)
 
@@ -261,7 +266,7 @@ def build_inventory(
         "all": {
             "vars": {
                 "ansible_user": admin_user,
-                "ansible_ssh_private_key_file": str(lab / "keys" / "ssc_admin_ed25519"),
+                "ansible_ssh_private_key_file": str(lab_key_dir() / "ssc_admin_ed25519"),
                 "ansible_ssh_common_args": ssh_args,
                 "ansible_python_interpreter": "/usr/bin/python3",
                 "lab_profile": profile,
@@ -281,7 +286,7 @@ def render_ssh_config(hosts: dict[str, ipaddress.IPv4Address], admin_user: str, 
             f"Host {name}",
             f"  HostName {address}",
             f"  User {admin_user}",
-            f'  IdentityFile "{lab / "keys" / "ssc_admin_ed25519"}"',
+            f'  IdentityFile "{lab_key_dir() / "ssc_admin_ed25519"}"',
             "  IdentitiesOnly yes",
             f'  UserKnownHostsFile "{lab / "known_hosts"}"',
             "  StrictHostKeyChecking accept-new",

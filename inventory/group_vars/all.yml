@@ -16,7 +16,7 @@ base_rp_filter: 1                       # strict; use 2 (loose) on multi-homed s
 
 # Research users are set per group: node.yml has them, monitor.yml has none.
 users_research_group: ssc-users
-users_generate_lab_keys: true           # lab: key pairs in .lab/keys/; on DASH, false plus each user's ssh_public_key
+users_generate_lab_keys: true           # lab: key pairs in ~/.config/ssc-lab/keys/; on DASH, false plus each user's ssh_public_key
 
 # Extra CIDRs allowed to SSH in. lab_cidr and lab_controller_ip are always allowed;
 # both come from the generated inventory. Leave empty in the lab; set campus or VPN ranges on DASH.

@@ -15,11 +15,12 @@ users_research_shell: /bin/bash
 # Ubuntu's default HOME_MODE is 0750; 0700 keeps one user out of another's files.
 users_home_mode: "0700"
 
-# Lab only: make an SSH key pair on the controller (.lab/keys/<name>_ed25519)
-# for each research user without ssh_public_key. On DASH, set this to false
-# and give each user's own public key.
+# Lab only: make an SSH key pair on the controller
+# (~/.config/ssc-lab/keys/<name>_ed25519, outside the repo, next to the admin
+# key from scripts/lab.sh) for each research user without ssh_public_key. On
+# DASH, set this to false and give each user's own public key.
 users_generate_lab_keys: false
-users_lab_key_dir: "{{ playbook_dir }}/../.lab/keys"
+users_lab_key_dir: "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/ssc-lab/keys"
 
 # Accounts with passwordless sudo, written to the file cloud-init created.
 # ubuntu stays: `multipass exec` logs in as ubuntu, and it is the repair
