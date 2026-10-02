@@ -3,7 +3,15 @@
 # The 99-zz- name makes this file apply after every vendor sysctl.d file.
 # Change these values in inventory/group_vars, not in /etc/sysctl.conf.
 
-{% for key, value in base_sysctl | dictsort %}
+{% set base_sysctl_first = ['net.ipv4.ip_forward', 'net.ipv6.conf.all.forwarding'] %}
+# Forwarding first. When net.ipv4.ip_forward changes, the kernel resets
+# net.ipv4.conf.all.accept_redirects (to 1 when forwarding goes off), so it
+# must be set before the redirect settings below.
+{% for key in base_sysctl_first if key in base_sysctl %}
+{{ key }} = {{ base_sysctl[key] }}
+{% endfor %}
+
+{% for key, value in base_sysctl | dictsort if key not in base_sysctl_first %}
 {{ key }} = {{ value }}
 {% endfor %}
 

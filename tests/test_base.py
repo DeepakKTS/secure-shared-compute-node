@@ -50,6 +50,18 @@ def test_rp_filter_holds_on_the_real_interface(host) -> None:
         assert sysctl(host, f"net.ipv4.conf.{scope}.rp_filter") == want, scope
 
 
+def test_forwarding_is_pinned_before_the_redirect_settings(host) -> None:
+    # The kernel default is 0, so the live value is 0 without the pin. Read
+    # the file: both keys are set, ahead of the redirect settings that a
+    # change of net.ipv4.ip_forward resets.
+    text = host.file("/etc/sysctl.d/99-zz-ssc-hardening.conf").content_string
+    keys = [line.split(" = ")[0] for line in text.splitlines() if " = " in line]
+    for key in ("net.ipv4.ip_forward", "net.ipv6.conf.all.forwarding"):
+        assert f"{key} = 0" in text.splitlines(), key
+        first_redirect = min(i for i, k in enumerate(keys) if "redirects" in k)
+        assert keys.index(key) < first_redirect, keys
+
+
 def test_hardening_file_applies_last(host) -> None:
     # A vendor file sorting after ours would undo values on every boot.
     with host.sudo():

@@ -14,7 +14,7 @@ Rules, in order:
 - Ping, rate limited, and IPv6 neighbour discovery.
 - Everything else is dropped and logged (rate limited) with the prefix `SSC-INPUT-DROP:`.
 
-Forwarding: the `forward` chain has policy drop and no accept rule, and logs (rate limited) with the prefix `SSC-FORWARD-DROP:`. The host is not a router, and kernel forwarding is off (`net.ipv4.ip_forward` and `net.ipv6.conf.all.forwarding` are 0, the kernel default). So today the chain sees nothing. It is there for the day something turns forwarding on: a container runtime, a VPN client, or an attacker with root. Then the host still does not pass traffic between networks, so a compromised node cannot become a route into other machines. A log line with this prefix means something enabled forwarding, which is worth a look.
+Forwarding: the `forward` chain has policy drop and no accept rule, and logs (rate limited) with the prefix `SSC-FORWARD-DROP:`. The host is not a router, and kernel forwarding is off (`net.ipv4.ip_forward` and `net.ipv6.conf.all.forwarding` are 0, pinned by `roles/base`). So today the chain sees nothing. It is there for the day something turns forwarding on: a container runtime, a VPN client, or an attacker with root. Then the host still does not pass traffic between networks, so a compromised node cannot become a route into other machines. A log line with this prefix means something enabled forwarding, which is worth a look.
 
 Rootful Docker turns forwarding on and routes its containers' traffic through this hook, so this policy cuts container networking. If DASH runs it, add an accept rule for the Docker bridge here, on purpose. Rootless Docker (P3.3) does not forward.
 

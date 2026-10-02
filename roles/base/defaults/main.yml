@@ -68,8 +68,15 @@ base_sysctl:
   fs.protected_symlinks: 1
   fs.protected_fifos: 2
   fs.protected_regular: 2
-  # A server is not a router: ignore ICMP redirects and source routes, and
-  # do not send redirects.
+  # A server is not a router. No forwarding between networks, so a
+  # compromised node cannot become a route into other machines. 0 is the
+  # kernel default; pinning it overrides a vendor sysctl.d file that turns it
+  # on, at every boot. It does not stop a program that sets it at run time
+  # (dockerd does); the firewall's forward chain still drops then. The
+  # template writes these two first (see the note there).
+  net.ipv4.ip_forward: 0
+  net.ipv6.conf.all.forwarding: 0
+  # Ignore ICMP redirects and source routes, and do not send redirects.
   net.ipv4.conf.all.accept_redirects: 0
   net.ipv4.conf.default.accept_redirects: 0
   net.ipv6.conf.all.accept_redirects: 0
