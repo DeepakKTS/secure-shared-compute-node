@@ -1,0 +1,60 @@
+---
+# Temp paths every user can write to. A program run from one of them is how
+# a dropped miner starts (T2). Failed attempts are recorded too: on the
+# noexec /tmp and /dev/shm such an exec fails with EACCES, and that attempt
+# is the evidence. So these rules have no success filter.
+auditd_exec_paths: [/tmp, /dev/shm, /var/tmp]
+
+# Persistence paths (T7): writes and attribute changes are recorded.
+auditd_cron_paths:
+  - /etc/crontab
+  - /etc/cron.d
+  - /etc/cron.hourly
+  - /etc/cron.daily
+  - /etc/cron.weekly
+  - /etc/cron.monthly
+  - /etc/cron.yearly
+  - /etc/cron.allow
+  - /etc/cron.deny
+  - /var/spool/cron                 # user crontabs, and at jobs when atd is installed
+auditd_systemd_paths: [/etc/systemd/system, /etc/systemd/user]
+auditd_sudoers_paths: [/etc/sudoers, /etc/sudoers.d]
+
+# Watched under /home/<name> for each research user (users_research). auditd
+# does not expand ~, so the role writes one rule per user. A watch on a
+# missing directory is not recursive, so the role creates these first.
+auditd_user_dirs: [.config/systemd, .ssh]
+auditd_user_rc_files: [.bashrc, .profile, .bash_profile, .bash_login, .bash_logout]
+
+# Syscall rules need the ABI they apply to. On x86_64 a 32-bit program uses
+# the i386 table (arch=b32), and a b64-only rule does not see it. The arm64
+# lab has b64 only (README).
+auditd_syscall_arches:
+  aarch64: [b64]
+  x86_64: [b64, b32]
+
+# chmod-family syscalls, grouped by the argument that holds the mode. 452 is
+# fchmodat2 (Linux 6.6): audit 3.1.2 does not know its name, and its number
+# is the same on every architecture. aarch64 has no plain chmod.
+auditd_chmod_syscalls:
+  aarch64:
+    a1: [fchmod]
+    a2: [fchmodat, "452"]
+  x86_64:
+    a1: [chmod, fchmod]
+    a2: [fchmodat, "452"]
+
+# Kernel queue for records waiting for auditd. When it is full the kernel
+# drops records and logs that (failure mode 1, fixed in the rules template).
+auditd_backlog_limit: 8192
+
+# auditd.conf. The log is capped at max_log_file x num_logs MB (400 MB here,
+# on the root disk). Reasons for each action are in the README.
+auditd_max_log_file: 50
+auditd_num_logs: 8
+auditd_space_left: "25%"
+auditd_space_left_action: syslog
+auditd_admin_space_left: "10%"
+auditd_admin_space_left_action: rotate
+auditd_disk_full_action: rotate
+auditd_disk_error_action: syslog

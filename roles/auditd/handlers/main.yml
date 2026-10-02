@@ -1,0 +1,12 @@
+---
+# auditd rereads auditd.conf at start, and the unit's ExecStartPost loads the
+# rules again, so a restart covers both files.
+- name: Restart auditd
+  ansible.builtin.systemd_service:
+    name: auditd
+    state: restarted
+
+# No module loads audit rules. augenrules joins rules.d and loads the result.
+- name: Load audit rules
+  ansible.builtin.command: augenrules --load
+  changed_when: true

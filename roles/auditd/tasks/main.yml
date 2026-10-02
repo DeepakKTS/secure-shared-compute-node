@@ -1,0 +1,91 @@
+---
+- name: Require audit syscall tables for this architecture
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['architecture'] in auditd_syscall_arches
+      - ansible_facts['architecture'] in auditd_chmod_syscalls
+    fail_msg: >-
+      No audit syscall rules for {{ ansible_facts['architecture'] }}. Add it to
+      auditd_syscall_arches and auditd_chmod_syscalls (roles/auditd/defaults/main.yml).
+    quiet: true
+
+- name: Install auditd
+  ansible.builtin.apt:
+    name: auditd
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# auditd does not expand ~, so the rules name each research user's paths.
+# A watch on a directory that is missing when the rules load is not
+# recursive, so create the directories first (parents get the same owner
+# and mode).
+- name: Create each research user's watched directories
+  ansible.builtin.file:
+    path: "/home/{{ item.0.name }}/{{ item.1 }}"
+    state: directory
+    owner: "{{ item.0.name }}"
+    group: "{{ item.0.name }}"
+    mode: "0700"
+  loop: "{{ users_research | product(auditd_user_dirs) | list }}"
+  loop_control:
+    label: "{{ item.0.name }}: {{ item.1 }}"
+
+- name: Configure auditd
+  ansible.builtin.template:
+    src: auditd.conf.j2
+    dest: /etc/audit/auditd.conf
+    owner: root
+    group: root
+    mode: "0640"
+  notify: Restart auditd
+
+# The name sorts after the vendor's audit.rules, so its -b, -f and -e win
+# (the template says why).
+- name: Write the audit rules
+  ansible.builtin.template:
+    src: ssc.rules.j2
+    dest: /etc/audit/rules.d/ssc.rules
+    owner: root
+    group: root
+    mode: "0640"
+  notify: Load audit rules
+
+- name: Run auditd at boot
+  ansible.builtin.systemd_service:
+    name: auditd
+    enabled: true
+    state: started
+
+- name: Apply a changed configuration and rules now
+  ansible.builtin.meta: flush_handlers
+
+# The unit loads rules with `ExecStartPost=-/sbin/augenrules --load`, and the
+# leading `-` hides a failed load at boot. So compare what the kernel holds
+# with the file, load again if they differ, and fail if they still differ.
+- name: Count the rules in the file
+  ansible.builtin.set_fact:
+    auditd_rule_count: >-
+      {{ lookup('ansible.builtin.template', 'ssc.rules.j2').splitlines()
+      | select('match', '^-[aw] ') | list | length }}
+
+- name: Read the loaded audit rules
+  ansible.builtin.command: auditctl -l
+  register: auditd_loaded
+  changed_when: false
+
+- name: Load the rules again if the kernel holds a different set
+  ansible.builtin.command: augenrules --load
+  when: >-
+    auditd_loaded.stdout_lines | select('search', '(-k |key=)ssc_') | list | length
+    != auditd_rule_count | int
+  changed_when: true
+
+- name: Require the kernel to hold every rule
+  ansible.builtin.command: auditctl -l
+  register: auditd_check
+  changed_when: false
+  failed_when: >-
+    auditd_check.rc != 0
+    or auditd_check.stdout_lines | select('search', '(-k |key=)ssc_') | list | length
+    != auditd_rule_count | int

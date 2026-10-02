@@ -47,6 +47,7 @@ PHASE2_SUITES = (
     "tests/test_fail2ban.py",
     "tests/test_auto_updates.py",
     "tests/test_tmp_hardening.py",
+    "tests/test_auditd.py",
 )
 READ_ONLY_TESTS = "lab and not changes_state"
 

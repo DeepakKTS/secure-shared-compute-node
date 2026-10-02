@@ -1,0 +1,50 @@
+# Managed by Ansible (role: auditd). Do not edit by hand.
+#
+# augenrules joins /etc/audit/rules.d/*.rules in `ls -v` order into
+# /etc/audit/audit.rules, and keeps only the last -b, -f and -e it reads.
+# This file is named to sort after the vendor's audit.rules, so the three
+# control lines below are the ones that apply.
+-b {{ auditd_backlog_limit }}
+# Failure mode 1: when a record is lost (full backlog, auditd gone), the
+# kernel logs it and goes on. Mode 2 would panic the kernel, which on a
+# shared server turns an audit problem into an outage for every user.
+-f 1
+# Enabled, not immutable. -e 2 would lock these rules until the next
+# reboot, so every rule change would need one (README: an optional final
+# step for DASH).
+-e 1
+
+## T2: a program run from a temp path, failed attempts included. On the
+## noexec /tmp and /dev/shm the exec fails with EACCES, and that attempt is
+## what S2 looks for. So no success filter.
+{% for arch in auditd_syscall_arches[ansible_facts['architecture']] %}
+{% for path in auditd_exec_paths %}
+-a always,exit -F arch={{ arch }} -S execve,execveat -F dir={{ path }} -k ssc_exec_tmp
+{% endfor %}
+{% endfor %}
+
+## T7, T8: a setuid or setgid bit set with chmod (mode & 06000), by anyone.
+{% for arch in auditd_syscall_arches[ansible_facts['architecture']] %}
+{% for arg, calls in auditd_chmod_syscalls[ansible_facts['architecture']] | dictsort %}
+-a always,exit -F arch={{ arch }} -S {{ calls | join(',') }} -F {{ arg }}&06000 -k ssc_suid
+{% endfor %}
+{% endfor %}
+
+## T7: writes and attribute changes on persistence paths. Watches are not
+## tied to an ABI, so they need no arch.
+{% for path in auditd_cron_paths %}
+-w {{ path }} -p wa -k ssc_cron
+{% endfor %}
+{% for path in auditd_systemd_paths %}
+-w {{ path }} -p wa -k ssc_systemd
+{% endfor %}
+{% for path in auditd_sudoers_paths %}
+-w {{ path }} -p wa -k ssc_sudoers
+{% endfor %}
+
+## T2, T7: each research user's own persistence paths (users_research).
+{% for user in users_research %}
+{% for name in auditd_user_dirs + auditd_user_rc_files %}
+-w /home/{{ user.name }}/{{ name }} -p wa -k ssc_user_persist
+{% endfor %}
+{% endfor %}

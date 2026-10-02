@@ -52,6 +52,8 @@ Verify each on the lab VM before relying on it; record anything that differs.
 - Do not set `-e 2` (immutable) during development; it makes rule changes need a reboot. Add it only as a documented optional final step.
 - Tag every rule with `-k ssc_<purpose>` so `ausearch -k` works in tests and scenarios.
 - `~` is not expanded in audit rules, and a watch needs its parent directory to exist. Render per-user watches (`/home/alice/.config/systemd`, rc files) from `users_research`, and create the directories first.
+- `ausearch` reads stdin when stdin is not a terminal (testinfra, `ssh host cmd`, cron), so it finds nothing and prints `<no matches>`. Add `--input-logs` to read the log from auditd.conf. Verified in Phase 2.
+- `auditctl -l` prints a mode mask in hex: `-F a1&06000` comes back as `-F a1&0xC00`. Watches print as written, with no trailing slash. Verified in Phase 2.
 
 ## chrony
 - Install chrony on all VMs so scenario timing uses one time source.

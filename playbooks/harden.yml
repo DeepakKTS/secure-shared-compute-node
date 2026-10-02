@@ -28,9 +28,12 @@
       become: true
       tags: [auto_updates]
 
-- name: Temp paths on the node
+- name: Temp paths and audit rules on the node
   hosts: node
   roles:
     - role: tmp_hardening
       become: true
       tags: [tmp_hardening]
+    - role: auditd
+      become: true
+      tags: [auditd]

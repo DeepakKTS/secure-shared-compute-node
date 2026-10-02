@@ -31,7 +31,7 @@ Milestone A = every item not marked (Milestone B). See `docs/PLAN.md`.
 - [x] P2.5 role fail2ban (F-24)
 - [x] P2.6 role auto_updates (F-25)
 - [x] P2.7 role tmp_hardening (F-26)
-- [ ] P2.8 role auditd (F-27)
+- [x] P2.8 role auditd (F-27)
 - [ ] P2.9 make idempotency (F-28)
 - [ ] P2.10 monitor gets base, users, ssh_hardening, firewall, fail2ban (F-29, monitor-specific ports in P4.8)
 - [ ] P2.11 testinfra tests for every role above
@@ -71,10 +71,10 @@ Milestone A = every item not marked (Milestone B). See `docs/PLAN.md`.
 - [ ] P6.2 fake pool listener on attacker (systemd unit, lab only)
 - [ ] P6.3 scripts/measure.py + fixtures, run_id matching, clock offset check (F-70)
 - [ ] P6.4 S1 (F-61; also closes the "S1 passes" part of F-24)
-- [ ] P6.5 S2 (F-62; also closes the "S2 passes" part of F-26)
+- [ ] P6.5 S2 (F-62; also closes the "S2 passes" part of F-26 and the S2 part of F-27)
 - [ ] P6.6 S3 (F-63)
 - [ ] P6.7 S4 (F-64)
-- [ ] P6.8 (Milestone B) S5 (F-65)
+- [ ] P6.8 (Milestone B) S5 (F-65; also closes the S5 part of F-27)
 - [ ] P6.9 (Milestone B) S6 (F-66)
 - [ ] Exit: `make simulate` passes S1 to S4 (Milestone B: all six)
 
