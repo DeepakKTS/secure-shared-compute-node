@@ -110,6 +110,11 @@ def test_demo_html_writes_the_page_then_opens_it() -> None:
     assert steps[-1] == ".venv/bin/python -B scripts/demo.py --html --open"
 
 
+def test_demo_live_rebuilds_the_page_until_stopped() -> None:
+    steps = make("-n", "demo-live").stdout.splitlines()
+    assert steps[-1] == ".venv/bin/python -B scripts/demo.py --html --live --open"
+
+
 @pytest.mark.parametrize(
     ("args", "expected"), [((), ""), (("HOSTS=node",), " -e reboot_hosts=node")]
 )

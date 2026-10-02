@@ -15,9 +15,13 @@ With --html (make demo-html) it shows the same data as --quick, and also
 writes it as a page to .lab/demo/index.html: one file, no scripts, and
 nothing loaded from elsewhere, so it works offline. The page looks like a
 terminal: each section shows the command that produced its values, as a
-prompt line, then the values. --open then opens the page with macOS `open`.
-Those two files in .lab/demo/ are the only ones the demo writes; --quick
-alone writes none.
+prompt line, then the values, and the command's raw output opens on a
+click. Above them, a drawing of the lab shows each machine's state and the
+flows that exist now, and a strip shows the build stages from TODO.md.
+--open then opens the page with macOS `open`. With --live (make demo-live)
+it rebuilds the page every 30 s until Ctrl+C, and only that page reloads
+itself. Those two files in .lab/demo/ are the only ones the demo writes;
+--quick alone writes none.
 
 A run that writes into .lab/demo/ (a full run, or --html) holds an
 exclusive lock on that directory for the whole run, so two runs never write
@@ -27,19 +31,22 @@ it at once. One that finds the lock taken stops at once and writes nothing.
 tests/test_demo.py checks all of this, and that a real run leaves the repo
 (apart from those files) and the VMs as they were.
 
-Usage: scripts/demo.py [--quick | --html [--open]]
+Usage: scripts/demo.py [--quick | --html [--open] [--live]]
 Exit 0 when every check worked and passed.
 """
 
 import argparse
 import fcntl
 import html
+import io
 import json
 import os
 import re
 import shlex
+import signal
 import subprocess
 import sys
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -62,7 +69,10 @@ LAB_VMS = ("ssc-node", "ssc-monitor", "ssc-attacker")
 NODE_VARS = ROOT / "inventory" / "group_vars" / "node.yml"
 ALL_VARS = ROOT / "inventory" / "group_vars" / "all.yml"
 TODO = ROOT / "TODO.md"
+INVENTORY = ROOT / "inventory" / "lab.yml"
 MULTIPASS_LIST = ["multipass", "list", "--format", "json"]
+# make demo-live rebuilds the page this often, in seconds.
+LIVE_INTERVAL = 30
 
 # (label, file in results/, note). Numbers come only from these files. A
 # label that starts with "interim" is marked as interim.
@@ -155,6 +165,23 @@ def controller_dir() -> str:
         return "~/" + ROOT.relative_to(Path.home()).as_posix()
     except ValueError:
         return ROOT.as_posix()
+
+
+def indented_json(text: str) -> str:
+    """JSON output indented for reading; anything else as it came."""
+    try:
+        return json.dumps(json.loads(text), indent=2)
+    except ValueError:
+        return text.rstrip("\n")
+
+
+def controller_address() -> str:
+    """The controller's lab address, from the generated inventory."""
+    try:
+        inventory = yaml.safe_load(INVENTORY.read_text())
+        return str(inventory["all"]["vars"]["lab_controller_ip"])
+    except (OSError, KeyError, TypeError, yaml.YAMLError):
+        return "address not in inventory"
 
 
 def phase2_command() -> str:
@@ -256,6 +283,7 @@ class Row:
 @dataclass
 class Prompt:
     command: str  # exactly what the demo ran, at the section's host
+    raw: str = ""  # what it printed, for the page's expandable output
 
 
 @dataclass
@@ -285,6 +313,7 @@ class Demo:
         saved: Path | None = None,
         page: Path | None = None,
         clock: Callable[[], str] = utc_now,
+        live: int | None = None,
     ) -> None:
         self.runner = runner
         self.out = out
@@ -295,10 +324,17 @@ class Demo:
         self.saved = saved or SAVED
         self.page = page or PAGE
         self.clock = clock
+        # Seconds between rebuilds when make demo-live builds the page.
+        self.live = live
         self.ok = True
         self.read_at = ""
         self.sections: list[Section] = []
         self.phase2_result = Phase2()
+        # What the topology shows, read by the steps above.
+        self.vm_info: dict[str, tuple[str, str]] = {}
+        self.input_policy = ""
+        self.fail2ban_state = "fail2ban not read"
+        self.saved_text = ""  # the saved Phase 2 record, for the page
 
     def say(self, text: str = "") -> None:
         print(text, file=self.out)
@@ -307,10 +343,12 @@ class Demo:
         self.sections.append(Section(title, host, comment))
         self.say(title)
 
-    def prompt(self, command: str) -> None:
+    def prompt(self, command: str) -> Prompt:
         """Record the command that makes the next rows, for the page's prompt
         line. The text summary does not print it."""
-        self.sections[-1].lines.append(Prompt(command))
+        line = Prompt(command)
+        self.sections[-1].lines.append(line)
+        return line
 
     def row(self, name: str, value: str, kind: str = "info", badge: str = "") -> None:
         self.sections[-1].lines.append(Row(name, value, kind, badge))
@@ -321,29 +359,38 @@ class Demo:
         self.row(name, f"ERROR: {text}", "error")
 
     def node(self, command: str) -> str | None:
-        self.prompt(command)
+        line = self.prompt(command)
         result = self.runner(ssh(command), None)
         if result.returncode != 0:
+            line.raw = f"(exit {result.returncode}) {result.stderr.strip()}".strip()
             return None
+        line.raw = indented_json(result.stdout)
         return result.stdout
 
     def vms(self) -> None:
         self.heading("Lab VMs (multipass list)", CONTROLLER)
-        self.prompt(shlex.join(MULTIPASS_LIST))
+        line = self.prompt(shlex.join(MULTIPASS_LIST))
         try:
             result = self.runner(MULTIPASS_LIST, None)
         except FileNotFoundError:
             self.problem("multipass", "not installed")
             return
         if result.returncode != 0:
+            line.raw = result.stderr.strip()
             self.problem("multipass", (result.stderr.strip() or "list failed").splitlines()[0])
             return
         listed = {vm["name"]: vm for vm in json.loads(result.stdout)["list"]}
+        # The page shows the lab VMs' entries only, never other VMs on the host.
+        line.raw = json.dumps(
+            {"list": [listed[name] for name in LAB_VMS if name in listed]}, indent=2
+        )
         for name in LAB_VMS:
             vm = listed.get(name)
             if vm is None:
+                self.vm_info[name] = ("not created", "")
                 self.row(name, "not created", "down")
                 continue
+            self.vm_info[name] = (vm["state"], ", ".join(vm["ipv4"]))
             kind = "ok" if vm["state"] == "Running" else "down"
             self.row(name, f"{vm['state']:<9} {', '.join(vm['ipv4'])}", kind)
 
@@ -392,11 +439,15 @@ class Demo:
             # In priority order: the order the kernel runs them in.
             found = sorted((c for c in chains if c.get("hook") == hook), key=lambda c: c["prio"])
             if not found:
+                if hook == "input":
+                    self.input_policy = "accept"
                 self.row(f"policy {hook}", "no chain, so accept")
                 continue
             # Secure when every chain but fail2ban's ban list drops by default.
             own = [c for c in found if c["table"] != "f2b-table"]
             drops = bool(own) and all(c["policy"] == "drop" for c in own)
+            if hook == "input":
+                self.input_policy = "drop" if drops else "accept"
             self.row(
                 f"policy {hook}",
                 ", ".join(
@@ -410,6 +461,7 @@ class Demo:
     def fail2ban(self) -> None:
         status = self.node(NODE_COMMANDS["fail2ban"])
         if status is None:
+            self.fail2ban_state = "fail2ban not running"
             self.problem("fail2ban sshd", "jail not running")
             return
         count = {
@@ -420,6 +472,7 @@ class Demo:
             self.problem("fail2ban sshd", "unexpected status output")
             return
         n = {key: match.group(1) for key, match in count.items()}
+        self.fail2ban_state = f"fail2ban up, {n['Currently banned']} banned now"
         self.row(
             "fail2ban sshd",
             f"jail up; banned now {n['Currently banned']} (total {n['Total banned']}),"
@@ -492,6 +545,7 @@ class Demo:
             self.say(f"Phase 2 checks: {error}")
             return
         self.show_phase2(record["passed"], record["counts"], record["saved_at"])
+        self.saved_text = json.dumps(record, indent=2)
         self.say(
             f"  saved {record['saved_at']} by the last full `make demo`; QUICK=1 did not rerun them"
         )
@@ -508,22 +562,23 @@ class Demo:
         self.phase2_result = Phase2(passed, status, text, saved_at)
         self.say(f"Phase 2 checks: {status} ({text})")
 
-    def write_page(self) -> None:
+    def write_page(self) -> bool:
         try:
             write_whole(self.page, render_page(self))
         except OSError as err:
             self.ok = False
             self.say(f"Could not write the page: {err}")
-            return
+            return False
         self.say(f"Wrote {os.path.relpath(self.page, ROOT)}")
         if not self.open_page:
-            return
+            return True
         try:
             opened = self.runner(["open", str(self.page)], None).returncode == 0
         except FileNotFoundError:
             opened = False
         if not opened:
             self.say("Could not run `open` (macOS only); open the page in a browser.")
+        return True
 
     def main(self) -> int:
         """Run the demo; a run that writes into .lab/demo/ holds its lock."""
@@ -548,6 +603,13 @@ class Demo:
             lock.release()
 
     def run(self) -> int:
+        self.collect()
+        if self.as_page:
+            self.write_page()
+        return 0 if self.ok else 1
+
+    def collect(self) -> None:
+        """Read the lab and print the summary; the page is written apart."""
         self.read_at = self.clock()
         self.say("Secure Shared Compute Node: live lab summary (changes nothing on the VMs)")
         self.say(f"Live values read {self.read_at}")
@@ -567,9 +629,6 @@ class Demo:
             self.phase2_saved()
         else:
             self.phase2()
-        if self.as_page:
-            self.write_page()
-        return 0 if self.ok else 1
 
 
 def summary_counts(line: str) -> dict[str, int]:
@@ -658,6 +717,8 @@ def theme_css(name: str) -> str:
     props.update(
         {
             "panel-glass": rgba(t["panel"], PANEL_ALPHA[name]),
+            "inset": rgba(t["line"], 0.03),
+            "halo": rgba(t["where"], 0.35),
             "border": rgba(t["line"], 0.12),
             "highlight": rgba("#ffffff", 0.14 if name == "dark" else 0.85),
             "bar": rgba(t["line"], 0.04),
@@ -768,10 +829,19 @@ code { padding: 0 5px; border-radius: 4px; color: var(--cmd); background: var(--
 .fill { flex: 1; }
 .key { color: var(--muted); }
 .foot { margin: 18px 4px 0; color: var(--muted); font-size: 0.9em; }
+"""
+
+# Last, so they win over every rule above: no motion when the system asks
+# for less, and a one-column layout at phone width.
+MEDIA_RULES = """
 @media (prefers-reduced-motion: reduce) {
-  .glow, .cursor { animation: none; }
+  .glow, .cursor, .link.flow, .up .dot, .stage.current { animation: none; }
 }
 @media (max-width: 640px) {
+  .topo svg.wide { display: none; }
+  .topo svg.tall { display: block; }
+  .stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  details.raw { margin-left: 0; }
   body { font-size: 13px; }
   main { padding: 16px 16px 24px; }
   .screen { padding: 16px 14px 6px; }
@@ -794,7 +864,7 @@ def page_css() -> str:
         f":root {{ color-scheme: dark; {theme_css('dark')} --mono: {MONO}; }}\n"
         "@media (prefers-color-scheme: light) {\n"
         f"  :root {{ color-scheme: light; {theme_css('light')} }}\n"
-        "}\n" + PAGE_RULES
+        "}\n" + PAGE_RULES + TOPO_RULES + hover_rules() + MEDIA_RULES
     )
 
 
@@ -850,18 +920,34 @@ def render_section(section: Section) -> str:
     if section.comment:
         parts.append(f'<p class="comment"># {e(section.comment)}</p>')
     rows: list[Row] = []
+    raw = ""
+
+    def flush() -> None:
+        # A command's rows, then its raw output, which opens on a click.
+        if rows:
+            parts.append(render_rows(rows))
+            rows.clear()
+        if raw:
+            parts.append(raw_details("raw output", raw))
+
     for line in section.lines:
         if isinstance(line, Prompt):
-            if rows:
-                parts.append(render_rows(rows))
-                rows = []
+            flush()
             parts.append(prompt_html(section.host, line.command))
+            raw = line.raw
         else:
             rows.append(line)
-    if rows:
-        parts.append(render_rows(rows))
+    flush()
     parts.append("</section>")
     return "\n".join(parts)
+
+
+def raw_details(label: str, text: str) -> str:
+    """Output that opens and closes with no script: a <details> element."""
+    return (
+        f'<details class="raw"><summary>{html.escape(label)}</summary>'
+        f"<pre>{html.escape(text)}</pre></details>"
+    )
 
 
 def code_spans(text: str) -> str:
@@ -887,6 +973,9 @@ def render_phase2(demo: "Demo") -> str:
             f'<p class="meta">Saved {e(result.saved_at)} by the last full <code>make demo</code>.'
             " This page did not rerun them; <code>make demo</code> does.</p>",
         ]
+        if demo.saved_text:
+            name = os.path.relpath(demo.saved, ROOT)
+            parts.append(raw_details(f"the saved result, {name}", demo.saved_text.rstrip("\n")))
     parts.append("</section>")
     return "\n".join(parts)
 
@@ -895,17 +984,384 @@ def render_statusbar(demo: "Demo") -> str:
     """A tmux-style status line: session, window, host, phase, read time, result."""
     e = html.escape
     state = "pass" if demo.ok else "fail"
+    live = (
+        [f'<span class="live">Live: refreshes every {demo.live} s</span>']
+        if demo.live is not None
+        else []
+    )
     return "\n".join(
         [
             '<div class="statusbar">',
             '<span class="chip session">[ssc-lab]</span>',
             f"<span>0:{e(NODE)}*</span>",
             '<span class="fill"></span>',
+            *live,
             f'<span><span class="key">host</span> {e(NODE)}</span>',
             f'<span><span class="key">phase</span> {e(current_phase())}</span>',
             f'<span><span class="key">read</span> {e(demo.read_at)}</span>',
             f'<span class="chip {state}">{state.upper()}</span>',
             "</div>",
+        ]
+    )
+
+
+# ---- the topology and the build stages -------------------------------------
+
+# Build stages in the order TODO.md lists their phases. The names are the
+# page's labels; each stage's state comes from TODO.md.
+STAGES = (
+    (0, "Lab"),
+    (1, "Baseline audit"),
+    (2, "Hardening"),
+    (3, "Isolation"),
+    (4, "Monitoring"),
+    (5, "Detection"),
+    (6, "Attack tests"),
+    (7, "Evidence"),
+)
+# The flows that later phases add, and the TODO task that builds each.
+PLANNED = {"monitoring": ("4", "P4.3"), "egress": ("5", "P5.5")}
+
+
+@dataclass
+class Stage:
+    phase: int
+    name: str
+    state: str  # done, current, or later
+    ticked: int
+    total: int
+
+
+def todo_stages(text: str) -> list[Stage]:
+    """Each build stage's state from TODO.md: before the current phase is
+    done, the current phase is current, the rest are later."""
+    current = re.search(r"^Current phase: \*\*(\d+)\*\*", text, re.M)
+    now = int(current.group(1)) if current else -1
+    boxes: dict[int, list[bool]] = {}
+    phase = None
+    for line in text.splitlines():
+        heading = re.match(r"## Phase (\d+):", line)
+        if heading:
+            phase = int(heading.group(1))
+            boxes[phase] = []
+        elif phase is not None and re.match(r"- \[[ x]\] P\d", line):
+            boxes[phase].append(line.startswith("- [x]"))
+    stages = []
+    for number, name in STAGES:
+        state = "done" if number < now else "current" if number == now else "later"
+        found = boxes.get(number, [])
+        stages.append(Stage(number, name, state, sum(found), len(found)))
+    return stages
+
+
+def task_ticked(text: str, task: str) -> bool:
+    return re.search(rf"^- \[x\] {re.escape(task)}\b", text, re.M) is not None
+
+
+# Line icons, drawn around (0, 0) in the page's stroke style.
+ICONS = {
+    # a laptop: screen and base
+    "controller": '<rect x="-22" y="-20" width="44" height="28" rx="3"/>'
+    '<path d="M-29 12h58l-4 7h-50z"/>',
+    # a server tower: drive bays and a power light
+    "ssc-node": '<rect x="-15" y="-24" width="30" height="48" rx="3"/>'
+    '<path d="M-8 -14h16M-8 -7h16"/><circle cx="0" cy="12" r="2.2"/>',
+    # a server with a small chart on its face
+    "ssc-monitor": '<rect x="-23" y="-19" width="46" height="38" rx="3"/>'
+    '<path d="M-15 9l8-9 6 5 12-12"/>',
+    # a server with a warning mark
+    "ssc-attacker": '<rect x="-23" y="-17" width="46" height="34" rx="3"/>'
+    '<path d="M-15 -7h13M-15 1h9"/><path d="M13 -9l10 17h-20z"/>'
+    '<path d="M13 -3v5M13 5.5v0.5"/>',
+}
+SHIELD = '<path d="M0 -13l11 4v7c0 8-5 13-11 15-6-2-11-7-11-15v-7z"/>'
+CHECK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>'
+
+
+@dataclass
+class Machine:
+    key: str  # controller, node, monitor or attacker: the CSS class suffix
+    name: str
+    address: str
+    state: str  # Running, Stopped, ..., "not created"; the controller is "runs make"
+
+    @property
+    def up(self) -> bool:
+        return self.state in ("Running", "runs make")
+
+
+@dataclass
+class Topology:
+    machines: dict[str, Machine]  # by key
+    input_policy: str  # the node's own input policy: drop, accept, or "" if unread
+    fail2ban: str  # a short fail2ban state for the attack line's label
+    built: dict[str, bool]  # PLANNED key -> its TODO task is ticked
+
+
+# Per layout: each machine's place and where its labels go ("right" or
+# "below"), then every line's path. Coordinates are in viewBox units.
+WIDE = {
+    "view": "0 36 1000 336",
+    "place": {
+        "controller": (120, 200, "below"),
+        "monitor": (560, 72, "right"),
+        "node": (560, 200, "right"),
+        "attacker": (560, 330, "right"),
+    },
+    "ssh": {
+        "monitor": "M156 196 C330 196 360 72 516 72",
+        "node": "M156 200 L516 200",
+        "attacker": "M156 204 C330 204 360 330 516 330",
+    },
+    "ssh_label": (330, 186, "middle"),
+    "attack_to_shield": "M560 304 L560 262",
+    "attack_through": "M560 304 L560 226",
+    "shield": (560, 250),
+    "attack_label": (580, 272, "start"),
+    "monitoring": "M560 174 L560 98",
+    "monitoring_label": (546, 140, "end"),
+    "egress": "M730 200 L888 200",
+    "egress_label": (800, 188, "middle"),
+    "internet": (930, 200),
+}
+TALL = {
+    "view": "0 0 360 700",
+    "place": {
+        "controller": (180, 52, "below"),
+        "monitor": (75, 236, "below"),
+        "attacker": (285, 236, "below"),
+        "node": (180, 452, "below"),
+    },
+    "ssh": {
+        "monitor": "M164 128 C130 160 90 180 80 206",
+        "node": "M180 128 L180 420",
+        "attacker": "M196 128 C230 160 270 180 280 206",
+    },
+    "ssh_label": (188, 170, "start"),
+    "attack_to_shield": "M285 330 C285 365 262 385 240 398",
+    "attack_through": "M285 330 C285 380 240 420 206 440",
+    "shield": (232, 406),
+    "attack_label": (350, 366, "end"),
+    "monitoring": "M150 430 C110 400 75 370 75 330",
+    "monitoring_label": (12, 392, "start"),
+    "egress": "M180 540 L180 618",
+    "egress_label": (190, 584, "start"),
+    "internet": (180, 650),
+}
+LAYOUTS = {"wide": WIDE, "tall": TALL}
+VM_KEYS = {"ssc-node": "node", "ssc-monitor": "monitor", "ssc-attacker": "attacker"}
+
+
+def svg_text(x: float, y: float, anchor: str, lines: list[tuple[str, str]]) -> str:
+    """A text block of (css class, text) lines, 16 units apart."""
+    e = html.escape
+    spans = "".join(
+        f'<tspan x="{x}" dy="{0 if i == 0 else 16}" class="{css}">{e(text)}</tspan>'
+        for i, (css, text) in enumerate(lines)
+    )
+    return f'<text x="{x}" y="{y}" text-anchor="{anchor}">{spans}</text>'
+
+
+def machine_svg(machine: Machine, x: int, y: int, labels: str) -> str:
+    state = "up" if machine.up else "down"
+    if labels == "right":
+        text = svg_text(
+            x + 40,
+            y - 12,
+            "start",
+            [("name", machine.name), ("sub", machine.address), ("sub", machine.state)],
+        )
+        hit = f'<rect class="hit" x="{x - 34}" y="{y - 34}" width="210" height="70"/>'
+    else:
+        text = svg_text(
+            x,
+            y + 44,
+            "middle",
+            [("name", machine.name), ("sub", machine.address), ("sub", machine.state)],
+        )
+        hit = f'<rect class="hit" x="{x - 80}" y="{y - 34}" width="160" height="114"/>'
+    return (
+        f'<g class="machine m-{machine.key} {state}">{hit}'
+        f'<g class="icon" transform="translate({x} {y})">{ICONS[machine.name]}</g>'
+        f'<circle class="dot" cx="{x + 27}" cy="{y - 22}" r="5"/>{text}</g>'
+    )  # fmt: skip
+
+
+def link_svg(path: str, *classes: str) -> str:
+    return f'<path class="link {" ".join(classes)}" d="{path}"/>'
+
+
+def topology_svg(name: str, topo: Topology) -> str:
+    layout = LAYOUTS[name]
+    m = topo.machines
+    parts = []
+    # Controller to each VM: SSH and Ansible. It moves only while the VM runs.
+    for key in ("monitor", "node", "attacker"):
+        moving = "flow" if m[key].up else "still"
+        parts.append(link_svg(layout["ssh"][key], "ssh", "to-controller", f"to-{key}", moving))
+    x, y, anchor = layout["ssh_label"]
+    parts.append(svg_text(x, y, anchor, [("tag", "SSH and Ansible")]))
+    # The attacker's traffic: it stops at the node's shield while the input
+    # policy is drop, and goes through when it is not.
+    blocked = topo.input_policy == "drop"
+    moving = "flow" if m["attacker"].up and m["node"].up else "still"
+    path = layout["attack_to_shield"] if blocked else layout["attack_through"]
+    parts.append(
+        link_svg(path, "attack", "to-attacker", "to-node", moving, "" if blocked else "through")
+    )
+    x, y, anchor = layout["attack_label"]
+    policy = f"input policy {topo.input_policy}" if topo.input_policy else "input policy not read"
+    parts.append(svg_text(x, y, anchor, [("tag", policy), ("tag", topo.fail2ban)]))
+    # Flows later phases add: dashed and gray, never moving.
+    for key, path_key, label_key, text in (
+        ("monitoring", "monitoring", "monitoring_label", "metrics"),
+        ("egress", "egress", "egress_label", "egress filter"),
+    ):
+        phase, _ = PLANNED[key]
+        targets = ("to-node", "to-monitor") if key == "monitoring" else ("to-node",)
+        parts.append(link_svg(layout[path_key], "planned", *targets))
+        note = (
+            f"{text}: built in Phase {phase}, not read here"
+            if topo.built[key]
+            else (f"{text}: Phase {phase}")
+        )
+        x, y, anchor = layout[label_key]
+        parts.append(svg_text(x, y, anchor, [("tag", note)]))
+    x, y = layout["internet"]
+    parts.append(
+        f'<g class="outside"><rect x="{x - 38}" y="{y - 16}" width="76" height="32" rx="8"/>'
+        f"{svg_text(x, y + 5, 'middle', [('sub', 'internet')])}</g>"
+    )
+    x, y = layout["shield"]
+    parts.append(
+        f'<g class="shield{"" if blocked else " open"}" transform="translate({x} {y})">{SHIELD}</g>'
+    )
+    for key, (x, y, labels) in layout["place"].items():
+        parts.append(machine_svg(m[key], x, y, labels))
+    return (
+        f'<svg class="{name}" viewBox="{layout["view"]}" role="img"'
+        ' aria-label="Lab topology: the controller, the three lab VMs and the flows between them">'
+        + "".join(parts)
+        + "</svg>"
+    )
+
+
+def render_stages(stages: list[Stage]) -> str:
+    e = html.escape
+    items = []
+    for stage in stages:
+        mark = CHECK if stage.state == "done" else ""
+        count = f"{stage.ticked} of {stage.total} tasks" if stage.total else "no tasks listed"
+        label = {"done": "finished", "current": "in progress", "later": "not started"}[stage.state]
+        items.append(
+            f'<li class="stage {stage.state}"><span class="mark">{mark}</span>'
+            f'<span class="phase">Phase {stage.phase}</span>'
+            f'<span class="name">{e(stage.name)}</span>'
+            f'<span class="count">{count}</span><span class="state">{label}</span></li>'
+        )
+    return "\n".join(['<ol class="stages">', *items, "</ol>"])
+
+
+TOPO_RULES = """
+.panel { margin: 0 0 22px; padding: 12px 14px 14px; border: 1px solid var(--border);
+  border-radius: 12px; background: var(--inset); }
+.panel h2 { margin: 0 0 8px; color: var(--muted); font-size: 1em; font-weight: 400; }
+.panel h2::before { content: "# "; }
+.topo svg { display: block; width: 100%; height: auto; }
+.topo svg.tall { display: none; max-width: 420px; margin: 0 auto; }
+.topo text { font-family: var(--mono); font-size: 13px; fill: var(--text);
+  paint-order: stroke; stroke: var(--panel); stroke-width: 5px; stroke-linejoin: round; }
+.topo .name { font-weight: 700; }
+.topo .sub, .topo .tag { fill: var(--muted); }
+.topo .tag { font-size: 12px; }
+.hit { fill: transparent; }
+.machine .icon { fill: none; stroke: var(--text); stroke-width: 1.6; stroke-linejoin: round;
+  stroke-linecap: round; }
+.machine.down .icon { opacity: 0.4; }
+.machine.down .name { fill: var(--muted); }
+.dot { stroke: none; }
+.up .dot { fill: var(--ok); animation: pulse 2.6s ease-in-out infinite; }
+.down .dot { fill: var(--bad); }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.link { fill: none; stroke: var(--where); stroke-width: 1.7; opacity: 0.85;
+  transition: opacity 0.2s, stroke-width 0.2s; }
+.link.flow { stroke-dasharray: 6 8; animation: flow 1.4s linear infinite; }
+.link.still { stroke: var(--muted); opacity: 0.4; }
+.link.attack { stroke: var(--warn); }
+.link.attack.through { stroke: var(--bad); }
+.link.attack.still { stroke: var(--muted); }
+.link.planned { stroke: var(--muted); stroke-dasharray: 3 6; opacity: 0.75; }
+@keyframes flow { to { stroke-dashoffset: -28; } }
+.shield path { fill: var(--ok-tint); stroke: var(--ok); stroke-width: 1.7; }
+.shield.open path { fill: none; stroke: var(--bad); }
+.outside rect { fill: none; stroke: var(--muted); stroke-dasharray: 3 4; }
+.legend { margin: 6px 0 0; color: var(--muted); }
+.stages { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px;
+  margin: 0; padding: 0; list-style: none; }
+.stage { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 10px; }
+.stage .mark { display: block; width: 18px; height: 18px; border: 1.5px solid var(--muted);
+  border-radius: 50%; }
+.stage .mark svg { display: block; width: 100%; height: 100%; fill: none;
+  stroke: var(--chip-pass-text); stroke-width: 2.2; stroke-linecap: round;
+  stroke-linejoin: round; }
+.stage .name { font-weight: 700; line-height: 1.3; }
+.stage .phase, .stage .count, .stage .state { color: var(--muted); font-size: 0.86em; }
+.stage.current .state { color: var(--where); }
+.stage.done { background: var(--ok-tint); border-color: transparent; }
+.stage.done .mark { border-color: var(--chip-pass); background: var(--chip-pass); }
+.stage.current { border-color: var(--where); animation: halo 3.2s ease-in-out infinite; }
+.stage.current .mark { border-color: var(--where); box-shadow: inset 0 0 0 4px var(--where); }
+.stage.later { border-style: dashed; }
+.stage.later .name { color: var(--muted); font-weight: 400; }
+@keyframes halo {
+  0%, 100% { box-shadow: 0 0 0 0 var(--halo); }
+  50% { box-shadow: 0 0 18px 2px var(--halo); }
+}
+.rows dt:hover, .rows dt:hover + dd, .rows dd:hover, .rows dt:has(+ dd:hover) {
+  background: var(--hover); }
+details.raw { margin: 2px 0 8px 2ch; }
+details.raw summary { color: var(--muted); cursor: pointer; }
+details.raw pre { max-height: 22rem; margin: 4px 0 0; padding: 8px 10px; overflow: auto;
+  border-radius: 8px; background: var(--code-bg); white-space: pre-wrap;
+  overflow-wrap: anywhere; }
+.live { color: var(--where); font-weight: 700; }
+"""
+
+
+def hover_rules() -> str:
+    """Hovering a machine brings its own lines forward and fades the rest."""
+    rules = [".topo:has(.machine:hover) .link { opacity: 0.18; }"]
+    for key in ("controller", "node", "monitor", "attacker"):
+        rules.append(f".topo:has(.m-{key}:hover) .to-{key} {{ opacity: 1; stroke-width: 2.6; }}")
+    return "\n".join(rules) + "\n"
+
+
+def build_topology(demo: "Demo", todo: str) -> Topology:
+    """The machines and flows from what this run read, and TODO.md."""
+    machines = {"controller": Machine("controller", CONTROLLER, controller_address(), "runs make")}
+    for name, key in VM_KEYS.items():
+        state, address = demo.vm_info.get(name, ("not read", ""))
+        machines[key] = Machine(key, name, address or "no address", state)
+    built = {key: task_ticked(todo, task) for key, (_, task) in PLANNED.items()}
+    return Topology(machines, demo.input_policy, demo.fail2ban_state, built)
+
+
+def render_topology(demo: "Demo", todo: str) -> str:
+    topo = build_topology(demo, todo)
+    return "\n".join(
+        [
+            '<section class="panel topo">',
+            "<h2>Lab topology (machines from multipass list, ssc-node values below)</h2>",
+            topology_svg("wide", topo),
+            topology_svg("tall", topo),
+            '<p class="legend">Moving lines: traffic that flows now. Dashed gray: not built'
+            " yet. Dimmed: a VM that is not running. Hover a machine to pick out its lines.</p>",
+            "</section>",
+            '<section class="panel">',
+            "<h2>Build stages (from TODO.md)</h2>",
+            render_stages(todo_stages(todo)),
+            "</section>",
         ]
     )
 
@@ -921,6 +1377,17 @@ def render_page(demo: "Demo") -> str:
             '<span class="pill fail">Something failed or could not be read:'
             " see the rows in red</span>"
         )
+    # Only a page that make demo-live keeps rebuilding reloads itself.
+    refresh = (
+        [f'<meta http-equiv="refresh" content="{demo.live}">'] if demo.live is not None else []
+    )
+    if demo.live is not None:
+        made_by = (
+            "Written by <code>make demo-live</code> (<code>scripts/demo.py --html --live</code>),"
+            f" which rebuilds it every {demo.live} s until Ctrl+C."
+        )
+    else:
+        made_by = "Written by <code>make demo-html</code> (<code>scripts/demo.py --html</code>)."
     return "\n".join(
         [
             "<!doctype html>",
@@ -928,6 +1395,7 @@ def render_page(demo: "Demo") -> str:
             "<head>",
             '<meta charset="utf-8">',
             '<meta name="viewport" content="width=device-width, initial-scale=1">',
+            *refresh,
             "<title>SSC Lab Console</title>",
             f"<style>\n{page_css()}</style>",
             "</head>",
@@ -952,14 +1420,14 @@ def render_page(demo: "Demo") -> str:
             f"<dt>Phase 2 checks saved (UTC)</dt><dd>{e(saved_at)}</dd>",
             "</dl>",
             "</header>",
+            render_topology(demo, TODO.read_text()),
             *(render_section(section) for section in demo.sections),
             render_phase2(demo),
             prompt_html(NODE, cursor=True),
             "</div>",
             render_statusbar(demo),
             "</div>",
-            '<footer class="foot">Written by <code>make demo-html</code>'
-            " (<code>scripts/demo.py --html</code>). One file with no scripts that loads"
+            f'<footer class="foot">{made_by} One file with no scripts that loads'
             " nothing from elsewhere, so it works offline.</footer>",
             "</main>",
             "</body>",
@@ -982,10 +1450,85 @@ def main(argv: list[str] | None = None) -> int:
         help=f"also write the --quick summary as a page, {os.path.relpath(PAGE, ROOT)}",
     )
     parser.add_argument("--open", action="store_true", help="open the page with `open`")
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help=f"rebuild the page every {LIVE_INTERVAL} s until Ctrl+C (make demo-live)",
+    )
+    # Shorter rounds for the lab test.
+    parser.add_argument("--interval", type=int, default=LIVE_INTERVAL, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if args.open and not args.html:
         parser.error("--open needs --html")
+    if args.live and not args.html:
+        parser.error("--live needs --html")
+    if args.interval < 1:
+        parser.error("--interval must be at least 1")
+    if args.live:
+        return live_main(args.interval, args.open)
     return Demo(quick=args.quick, as_page=args.html, open_page=args.open).main()
+
+
+# ---- live mode (make demo-live) ------------------------------------------
+
+
+def live(make_demo: Callable[[bool], Demo], interval: int, stop: threading.Event, out) -> int:
+    """Rebuild the page every `interval` seconds until `stop` is set.
+
+    Each round is a --html run, so it is as read-only on the VMs as make
+    demo-html. A round that Ctrl+C cuts short is not written: the page left
+    behind is always a whole round. Returns the last written round's code."""
+    last = 1
+    first = True
+    while not stop.is_set():
+        demo = make_demo(first)
+        demo.collect()
+        if stop.is_set():
+            break
+        if not demo.write_page():
+            return 1
+        last = 0 if demo.ok else 1
+        print(
+            f"live: wrote {os.path.relpath(demo.page, ROOT)}, values read {demo.read_at},"
+            f" {'PASS' if demo.ok else 'FAIL'}",
+            file=out,
+            flush=True,
+        )
+        first = False
+        if stop.wait(interval):
+            break
+    print("live: stopped; the page shows the last whole round", file=out, flush=True)
+    return last
+
+
+def live_main(interval: int, open_page: bool) -> int:
+    """make demo-live: hold the .lab/demo lock and rebuild until Ctrl+C."""
+    lock = DirLock(PAGE.parent)
+    try:
+        held = lock.acquire()
+    except (OSError, ValueError) as err:
+        print(f"Could not lock {os.path.relpath(PAGE.parent, ROOT)}: {err}")
+        return 1
+    if not held:
+        print(
+            f"Another demo run is writing {os.path.relpath(PAGE.parent, ROOT)} (make demo,"
+            " make demo-html or the lab test). Wait for it to end, then try again."
+        )
+        return 1
+    print(f"live: rebuilding the page every {interval} s; Ctrl+C stops", flush=True)
+
+    def make_demo(first: bool) -> Demo:
+        # The summary text of each round is not printed; one line per round is.
+        return Demo(out=io.StringIO(), as_page=True, open_page=open_page and first, live=interval)
+
+    # Ctrl+C sets the event: the round in progress ends, and the loop stops.
+    stop = threading.Event()
+    previous = signal.signal(signal.SIGINT, lambda *_: stop.set())
+    try:
+        return live(make_demo, interval, stop, sys.stdout)
+    finally:
+        signal.signal(signal.SIGINT, previous)
+        lock.release()
 
 
 if __name__ == "__main__":

@@ -39,6 +39,7 @@ SH_FILES := $(shell find scripts simulate -type f -name '*.sh' 2>/dev/null)
 todo = echo "make $@: not implemented yet (Phase $(1), see TODO.md)" >&2; exit 2
 
 .PHONY: help deps check-venv lab-up lab-down lab-status ping lint test audit-log demo demo-html
+.PHONY: demo-live
 .PHONY: baseline harden idempotency monitoring detection verify audit simulate report all
 
 help: ## List targets
@@ -113,6 +114,12 @@ demo: check-venv ## Read-only summary of the live lab (QUICK=1 skips the suite r
 # run never opens an old page.
 demo-html: check-venv ## The QUICK=1 summary as a page, .lab/demo/index.html, opened with open
 	$(PY) -B scripts/demo.py --html --open
+
+# The same page, rebuilt every 30 s until Ctrl+C; only this page reloads
+# itself. Read-only on the VMs, like demo-html. It holds the .lab/demo lock,
+# so make demo and make demo-html refuse to run while it does.
+demo-live: check-venv ## Rebuild the demo page every 30 s until Ctrl+C, opened with open
+	$(PY) -B scripts/demo.py --html --live --open
 
 # ---- Phase 1: baseline audit -------------------------------------------------
 

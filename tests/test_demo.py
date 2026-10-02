@@ -3,8 +3,9 @@
 The unit tests feed it canned command output and check what it runs and
 prints, and that the only file it writes is the saved Phase 2 result (none
 with --quick, only the page with --html). The lab test runs the real `make
-demo`, then `make demo QUICK=1`, then the page run, and checks that the repo
-(apart from those files) and every lab VM are as they were before each.
+demo`, then `make demo QUICK=1`, then live mode for two rounds, then the page
+run, and checks that the repo (apart from those files) and every lab VM are
+as they were before each.
 """
 
 import ast
@@ -14,7 +15,11 @@ import io
 import json
 import os
 import re
+import select
+import signal
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 import demo
@@ -110,15 +115,22 @@ def completed(argv, rc: int = 0, out: str = "", err: str = "") -> subprocess.Com
 class FakeLab:
     """Stands in for demo.run: answers from canned output, records every call."""
 
-    def __init__(self, node=None, pytest_out="227 passed, 17 deselected in 90.00s", pytest_rc=0):
+    def __init__(
+        self,
+        node=None,
+        pytest_out="227 passed, 17 deselected in 90.00s",
+        pytest_rc=0,
+        multipass=None,
+    ):
         self.node = {**NODE_OUTPUT, **(node or {})}
         self.pytest = completed([], pytest_rc, f"....\n{pytest_out}\n")
+        self.multipass = multipass or MULTIPASS
         self.calls: list[tuple[list[str], dict | None]] = []
 
     def __call__(self, argv, env):
         self.calls.append((argv, env))
         if argv[0] == "multipass":
-            return completed(argv, 0, json.dumps(MULTIPASS))
+            return completed(argv, 0, json.dumps(self.multipass))
         if argv[0] == "ssh":
             command = argv[-1]
             for user in demo.research_users():
@@ -443,7 +455,8 @@ def test_page_escapes_what_the_lab_returns(page_path: Path) -> None:
 def test_page_shows_command_spans_as_code(page_path: Path) -> None:
     _, _, page = run_page(page_path)
     assert "change VM state left out, <code>pytest -m lab</code> runs them</span>" in page
-    assert "`" not in page
+    # Raw command output keeps its own characters (fail2ban prints "`- Actions").
+    assert "`" not in re.sub(r"<pre>.*?</pre>", "", page, flags=re.S)
 
 
 def test_page_shows_failures_in_red(saved_result: Path, page_path: Path) -> None:
@@ -600,6 +613,200 @@ def test_page_has_no_emoji_dashes_or_ai_wording(page_path: Path) -> None:
     assert page.isascii(), "no emoji, no em or en dashes, no other symbols"
     for word in ("generated", " ai ", "ai-", "powered", "seamless", "robust", "leverage"):
         assert word not in page.lower(), word
+
+
+# ---- topology, stages, raw output, live mode (B3b) -------------------------
+
+ALL_UP = {
+    "list": [
+        {"name": "ssc-node", "state": "Running", "ipv4": ["192.0.2.2"]},
+        {"name": "ssc-monitor", "state": "Running", "ipv4": ["192.0.2.3"]},
+        {"name": "ssc-attacker", "state": "Running", "ipv4": ["192.0.2.4"]},
+        {"name": "other-vm", "state": "Running", "ipv4": ["192.0.2.9"]},
+    ]
+}
+
+
+def with_attacker(state: str) -> dict:
+    listing = json.loads(json.dumps(ALL_UP))
+    listing["list"][2]["state"] = state
+    if state != "Running":
+        listing["list"][2]["ipv4"] = []
+    return listing
+
+
+def links(page: str) -> list[set[str]]:
+    """The class set of every topology line in the wide drawing."""
+    wide = page[page.index('<svg class="wide"') :].split("</svg>", 1)[0]
+    return [set(c.split()) for c in re.findall(r'<path class="link ([^"]*)"', wide)]
+
+
+def test_topology_shows_each_machine_from_multipass(page_path: Path) -> None:
+    _, _, page = run_page(page_path, FakeLab(multipass=ALL_UP))
+    for svg in ("wide", "tall"):
+        drawing = page[page.index(f'<svg class="{svg}"') :].split("</svg>", 1)[0]
+        for key, name, address in (
+            ("node", "ssc-node", "192.0.2.2"),
+            ("monitor", "ssc-monitor", "192.0.2.3"),
+            ("attacker", "ssc-attacker", "192.0.2.4"),
+        ):
+            group = re.search(rf'<g class="machine m-{key} up">(.*?)</text></g>', drawing)
+            assert group, (svg, key)
+            assert f'class="name">{name}</tspan>' in group.group(1)
+            assert f'class="sub">{address}</tspan>' in group.group(1)
+            assert 'class="sub">Running</tspan>' in group.group(1)
+        assert '<g class="machine m-controller up">' in drawing
+    assert "other-vm" not in page.split("<details", 1)[0]
+
+
+def test_a_stopped_attacker_is_dimmed_and_nothing_to_it_moves(page_path: Path) -> None:
+    _, _, page = run_page(page_path, FakeLab(multipass=with_attacker("Stopped")))
+    assert '<g class="machine m-attacker down">' in page
+    assert 'class="sub">Stopped</tspan>' in page
+    for classes in links(page):
+        if "to-attacker" in classes:
+            assert "flow" not in classes and "still" in classes, classes
+    # The other VMs still move.
+    assert any({"to-node", "ssh", "flow"} <= c for c in links(page))
+
+
+def test_flows_that_are_not_built_never_move(page_path: Path) -> None:
+    _, _, page = run_page(page_path, FakeLab(multipass=ALL_UP))
+    planned = [c for c in links(page) if "planned" in c]
+    assert len(planned) == 2
+    assert all("flow" not in c for c in planned)
+    assert "metrics: Phase 4" in page and "egress filter: Phase 5" in page
+
+
+def test_attack_traffic_stops_at_the_shield_while_input_drops(page_path: Path) -> None:
+    _, _, page = run_page(page_path, FakeLab(multipass=ALL_UP))
+    (attack,) = [c for c in links(page) if "attack" in c]
+    assert "flow" in attack and "through" not in attack
+    assert '<g class="shield" transform=' in page
+    assert "input policy drop" in page and "fail2ban up, 0 banned now" in page
+
+
+def test_attack_traffic_goes_through_when_input_accepts(page_path: Path) -> None:
+    chains = json.loads(json.dumps(CHAINS))
+    chains["nftables"][1]["chain"]["policy"] = "accept"
+    lab = FakeLab(node={"sudo -n nft -j list chains": json.dumps(chains)}, multipass=ALL_UP)
+    _, _, page = run_page(page_path, lab)
+    (attack,) = [c for c in links(page) if "attack" in c]
+    assert "through" in attack
+    assert '<g class="shield open"' in page and "input policy accept" in page
+
+
+def test_stages_come_from_todo(tmp_path: Path, monkeypatch, page_path: Path) -> None:
+    todo = tmp_path / "TODO.md"
+    todo.write_text(
+        "Current phase: **4**\n\n## Phase 0: Bootstrap\n- [x] P0.1 a\n- [x] Exit: x\n"
+        "## Phase 3: Isolation\n- [x] P3.1 a\n- [ ] P3.3 b\n"
+        "## Phase 4: Monitoring\n- [x] P4.1 a\n- [x] P4.3 prometheus\n- [ ] P4.5 c\n"
+    )
+    monkeypatch.setattr(demo, "TODO", todo)
+    stages = demo.todo_stages(todo.read_text())
+    assert [s.state for s in stages] == ["done"] * 4 + ["current"] + ["later"] * 3
+    assert (stages[0].ticked, stages[0].total) == (1, 1)  # the Exit line is not a task
+    assert (stages[3].ticked, stages[3].total) == (1, 2)
+    _, _, page = run_page(page_path, FakeLab(multipass=ALL_UP))
+    current = '<li class="stage current"><span class="mark"></span><span class="phase">Phase 4'
+    assert current in page
+    # P4.3 is ticked, so monitoring counts as built, but the page never
+    # checks it live, so the line still does not move.
+    assert "metrics: built in Phase 4, not read here" in page
+    assert all("flow" not in c for c in links(page) if "planned" in c)
+
+
+def test_raw_output_opens_and_closes_without_scripts(page_path: Path) -> None:
+    _, _, page = run_page(page_path)
+    raw = re.findall(r'<details class="raw"><summary>([^<]*)</summary><pre>(.*?)</pre>', page, re.S)
+    # One per command, and the saved Phase 2 result.
+    assert len(raw) == len(commands_demo_runs())
+    texts = [html.unescape(text) for _, text in raw]
+    assert any("passwordauthentication no" in t for t in texts)
+    assert any('"name": "ssc-node"' in t for t in texts)
+    assert not any("other-vm" in t for t in texts), "only the lab VMs' entries"
+    assert any(summary.startswith("the saved result, ") for summary, _ in raw)
+
+
+def test_hover_highlights_lines_and_rows() -> None:
+    css = demo.page_css()
+    for key in ("controller", "node", "monitor", "attacker"):
+        assert f".topo:has(.m-{key}:hover) .to-{key}" in css
+    assert ".rows dt:hover + dd" in css
+
+
+def test_reduced_motion_stops_every_animation() -> None:
+    css = demo.page_css()
+    # Every rule that starts an animation (not one that sets it to none).
+    animated = set(re.findall(r"([^{}\n]+)\{[^{}]*animation:\s*(?!none\b)[a-z]", css))
+    assert animated, "no animations found"
+    reduced = re.search(r"@media \(prefers-reduced-motion: reduce\) \{\s*([^{]+)\{", css)
+    stopped = {s.strip() for s in reduced.group(1).split(",")}
+    for selectors in animated:
+        for selector in selectors.split(","):
+            assert selector.strip() in stopped, selector
+
+
+def test_phones_get_the_tall_drawing() -> None:
+    css = demo.page_css()
+    phone = css[css.index("@media (max-width: 640px)") :]
+    assert ".topo svg.wide { display: none; }" in phone
+    assert ".topo svg.tall { display: block; }" in phone
+
+
+def test_only_a_live_page_refreshes(page_path: Path) -> None:
+    _, _, static = run_page(page_path)
+    assert "http-equiv" not in static and "Live:" not in static
+    run_demo(FakeLab())
+    demo.Demo(runner=FakeLab(), out=io.StringIO(), as_page=True, live=30).main()
+    live = page_path.read_text()
+    assert '<meta http-equiv="refresh" content="30">' in live
+    assert '<span class="live">Live: refreshes every 30 s</span>' in live
+    assert "make demo-live" in live
+
+
+def test_live_rebuilds_until_stopped_and_drops_a_cut_round(page_path: Path) -> None:
+    run_demo(FakeLab())
+    stop = threading.Event()
+    times = iter(["2026-01-02T09:00:00Z", "2026-01-02T09:00:30Z", "2026-01-02T09:01:00Z"])
+    made: list[bool] = []
+
+    def make_demo(first: bool) -> demo.Demo:
+        made.append(first)
+        if len(made) == 3:
+            stop.set()  # as Ctrl+C would, while the third round reads the lab
+        return demo.Demo(
+            runner=FakeLab(), out=io.StringIO(), as_page=True, live=30, clock=lambda: next(times)
+        )
+
+    out = io.StringIO()
+    rc = demo.live(make_demo, 0, stop, out)
+    lines = out.getvalue().splitlines()
+    assert rc == 0
+    assert made == [True, False, False]
+    assert [line.split(",")[1] for line in lines[:2]] == [
+        " values read 2026-01-02T09:00:00Z",
+        " values read 2026-01-02T09:00:30Z",
+    ]
+    assert lines[-1].startswith("live: stopped")
+    # The third round was cut short and not written: the page is round two.
+    page = page_path.read_text()
+    assert "<dt>Live values read (UTC)</dt><dd>2026-01-02T09:00:30Z</dd>" in page
+
+
+def test_live_mode_refuses_while_another_run_writes(page_path: Path) -> None:
+    fd = hold_lock(page_path.parent)
+    try:
+        assert demo.live_main(1, False) == 1
+    finally:
+        os.close(fd)
+    assert not page_path.exists()
+
+
+def test_live_needs_html() -> None:
+    with pytest.raises(SystemExit):
+        demo.main(["--live"])
 
 
 def test_page_without_a_saved_result_says_so(page_path: Path) -> None:
@@ -815,6 +1022,29 @@ def vm_state(name: str) -> list[str]:
     return lines
 
 
+def run_live(argv: list[str], env: dict[str, str], lock: int) -> tuple[int, str]:
+    """Start live mode, let it write two rounds, then press Ctrl+C (SIGINT)."""
+    proc = subprocess.Popen(
+        argv, cwd=ROOT, env=env, pass_fds=(lock,), stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT, text=True,
+    )  # fmt: skip
+    out = ""
+    deadline = time.monotonic() + 300
+    try:
+        while out.count("live: wrote") < 2 and time.monotonic() < deadline:
+            if select.select([proc.stdout], [], [], 5)[0]:
+                line = proc.stdout.readline()
+                if not line:
+                    break
+                out += line
+        proc.send_signal(signal.SIGINT)
+        rest, _ = proc.communicate(timeout=120)
+    except BaseException:
+        proc.kill()
+        raise
+    return proc.returncode, out + rest
+
+
 @pytest.mark.lab
 def test_demo_runs_change_nothing_but_their_own_files_in_lab_demo() -> None:
     lab_hosts.hosts("node")  # skips without inventory/lab.yml
@@ -826,7 +1056,7 @@ def test_demo_runs_change_nothing_but_their_own_files_in_lab_demo() -> None:
     saved = str(REAL_SAVED.relative_to(ROOT))
     saved_dir = str(REAL_SAVED.parent.relative_to(ROOT))
     page = str(REAL_PAGE.relative_to(ROOT))
-    # Hold the demo lock for all three steps and share it with each run, so
+    # Hold the demo lock for every step and share it with each run, so
     # another demo run (make demo-html in a terminal) is refused instead of
     # writing .lab/demo/ under the test. That happened in the B2 runs.
     REAL_SAVED.parent.mkdir(exist_ok=True)
@@ -838,29 +1068,39 @@ def test_demo_runs_change_nothing_but_their_own_files_in_lab_demo() -> None:
         pytest.fail(f"another demo run is writing {saved_dir}; rerun the test when it ends")
     env = {**os.environ, demo.LOCK_FD_ENV: str(lock)}
     make_demo = ["make", "--no-print-directory", "demo"]
-    # The full run first: QUICK=1 and the page show the result it saves. The
-    # page run is the script without --open, as `make demo-html` would open a
-    # browser.
+    python = str(ROOT / ".venv" / "bin" / "python")
+    # The script make demo-live runs, with 1 s rounds; stopped by Ctrl+C.
+    live = [python, "-B", "scripts/demo.py", "--html", "--live", "--interval", "1"]
+    # The full run first: QUICK=1 and the pages show the result it saves.
+    # The page runs are the script without --open, as make demo-html and make
+    # demo-live would open a browser. The static page comes last, so the page
+    # left behind does not reload itself.
     steps = (
         (make_demo, {saved}, {saved, saved_dir}, "saved for QUICK=1 in .lab/demo/phase2.json"),
         ([*make_demo, "QUICK=1"], set(), set(), "QUICK=1 did not rerun them"),
-        (
-            [str(ROOT / ".venv" / "bin" / "python"), "-B", "scripts/demo.py", "--html"],
-            {page}, {page, saved_dir}, "Wrote .lab/demo/index.html",
-        ),
+        (live, {page}, {page, saved_dir}, "live: stopped"),
+        ([python, "-B", "scripts/demo.py", "--html"], {page}, {page, saved_dir},
+         "Wrote .lab/demo/index.html"),
     )  # fmt: skip
     try:
         for argv, must_change, may_change, says in steps:
             repo_before = repo_state()
             vms_before = {name: vm_state(name) for name in names}
-            result = subprocess.run(
-                argv, cwd=ROOT, env=env, pass_fds=(lock,), capture_output=True, text=True,
-                check=False, timeout=900,
-            )  # fmt: skip
+            if argv is live:
+                code, out = run_live(argv, env, lock)
+                assert out.count("live: wrote") >= 2 and "FAIL" not in out, out
+                assert '<meta http-equiv="refresh" content="1">' in REAL_PAGE.read_text()
+            else:
+                result = subprocess.run(
+                    argv, cwd=ROOT, env=env, pass_fds=(lock,), capture_output=True, text=True,
+                    check=False, timeout=900,
+                )  # fmt: skip
+                code, out = result.returncode, result.stdout + result.stderr
+                assert "Phase 2 checks: PASS" in out, out
             vms_after = {name: vm_state(name) for name in names}
             changed = changed_keys(repo_before, repo_state())
-            assert result.returncode == 0, result.stdout + result.stderr
-            assert "Phase 2 checks: PASS" in result.stdout and says in result.stdout, result.stdout
+            assert code == 0, out
+            assert says in out, out
             assert must_change <= changed <= may_change, (argv, sorted(changed))
             for name in names:
                 gone = sorted(set(vms_before[name]) - set(vms_after[name]))
