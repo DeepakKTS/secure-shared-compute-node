@@ -38,7 +38,7 @@ SH_FILES := $(shell find scripts simulate -type f -name '*.sh' 2>/dev/null)
 # `make all` cannot report success before the work exists.
 todo = echo "make $@: not implemented yet (Phase $(1), see TODO.md)" >&2; exit 2
 
-.PHONY: help deps check-venv lab-up lab-down lab-status ping lint test audit-log demo
+.PHONY: help deps check-venv lab-up lab-down lab-status ping lint test audit-log demo demo-html
 .PHONY: baseline harden idempotency monitoring detection verify audit simulate report all
 
 help: ## List targets
@@ -107,6 +107,12 @@ audit-log: check-venv ## Show today's Bash commands the guard hook blocked
 # result instead of running the suites again. tests/test_demo.py checks both.
 demo: check-venv ## Read-only summary of the live lab (QUICK=1 skips the suite run)
 	$(PY) -B scripts/demo.py $(if $(QUICK),--quick,)
+
+# The QUICK=1 data, also written as one offline page in .lab/demo/ and opened
+# with macOS `open`. The script opens it only after writing it, so a failed
+# run never opens an old page.
+demo-html: check-venv ## The QUICK=1 summary as a page, .lab/demo/index.html, opened with open
+	$(PY) -B scripts/demo.py --html --open
 
 # ---- Phase 1: baseline audit -------------------------------------------------
 

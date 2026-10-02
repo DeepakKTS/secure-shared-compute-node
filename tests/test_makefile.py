@@ -105,6 +105,11 @@ def test_demo_runs_the_script_without_writing_bytecode(
     assert steps[-1].rstrip() == f".venv/bin/python -B scripts/demo.py{expected}"
 
 
+def test_demo_html_writes_the_page_then_opens_it() -> None:
+    steps = make("-n", "demo-html").stdout.splitlines()
+    assert steps[-1] == ".venv/bin/python -B scripts/demo.py --html --open"
+
+
 @pytest.mark.parametrize(
     ("args", "expected"), [((), ""), (("HOSTS=node",), " -e reboot_hosts=node")]
 )

@@ -2,15 +2,16 @@
 
 The unit tests feed it canned command output and check what it runs and
 prints, and that the only file it writes is the saved Phase 2 result (none
-with --quick). The lab test runs the real `make demo`, then `make demo
-QUICK=1`, and checks that the repo (apart from that file) and every lab VM
-are as they were before each.
+with --quick, only the page with --html). The lab test runs the real `make
+demo`, then `make demo QUICK=1`, then the page run, and checks that the repo
+(apart from those files) and every lab VM are as they were before each.
 """
 
 import ast
 import io
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -63,6 +64,7 @@ NODE_OUTPUT = {
 NO_SUDO = "User {user} is not allowed to run sudo on ssc-node.\n"
 
 REAL_SAVED = demo.SAVED
+REAL_PAGE = demo.PAGE
 FULL_AT = "2026-01-02T03:04:05Z"
 QUICK_AT = "2026-01-02T09:00:00Z"
 PHASE2_PASS = (
@@ -76,6 +78,14 @@ def saved_result(tmp_path: Path, monkeypatch) -> Path:
     # Unit tests never touch the real saved result in .lab/demo/.
     path = tmp_path / "demo" / "phase2.json"
     monkeypatch.setattr(demo, "SAVED", path)
+    return path
+
+
+@pytest.fixture(autouse=True)
+def page_path(tmp_path: Path, monkeypatch) -> Path:
+    # Nor the real page.
+    path = tmp_path / "demo" / "index.html"
+    monkeypatch.setattr(demo, "PAGE", path)
     return path
 
 
@@ -117,13 +127,19 @@ class FakeLab:
             return completed(argv, 0, self.node[command])
         if argv[0] == str(ROOT / ".venv" / "bin" / "pytest"):
             return self.pytest
+        if argv[0] == "open":
+            return completed(argv)
         raise AssertionError(f"demo ran an unexpected command: {argv}")
 
 
-def run_demo(lab: FakeLab, quick: bool = False, at: str = FULL_AT) -> tuple[int, str]:
+def run_demo(lab: FakeLab, at: str = FULL_AT, **flags: bool) -> tuple[int, str]:
     out = io.StringIO()
-    rc = demo.Demo(runner=lab, out=out, quick=quick, clock=lambda: at).main()
+    rc = demo.Demo(runner=lab, out=out, clock=lambda: at, **flags).main()
     return rc, out.getvalue()
+
+
+def changed_keys(before: dict, after: dict) -> set[str]:
+    return {key for key in set(before) | set(after) if before.get(key) != after.get(key)}
 
 
 def repo_state(root: Path = ROOT) -> dict[str, tuple[int, int, int]]:
@@ -298,11 +314,154 @@ def test_quick_run_refuses_a_saved_result_it_cannot_trust(
     )
 
 
-def test_quick_flag_reaches_the_demo(monkeypatch) -> None:
+def test_flags_reach_the_demo(monkeypatch) -> None:
     seen = []
-    monkeypatch.setattr(demo.Demo, "main", lambda self: seen.append(self.quick) or 0)
-    assert demo.main(["--quick"]) == 0 and demo.main([]) == 0
-    assert seen == [True, False]
+    monkeypatch.setattr(
+        demo.Demo, "main", lambda self: seen.append((self.quick, self.as_page, self.open_page)) or 0
+    )
+    for argv in ([], ["--quick"], ["--html"], ["--html", "--open"]):
+        assert demo.main(argv) == 0
+    # --html always uses the saved result, like --quick.
+    assert seen == [
+        (False, False, False),
+        (True, False, False),
+        (True, True, False),
+        (True, True, True),
+    ]
+    with pytest.raises(SystemExit):
+        demo.main(["--open"])
+
+
+# ---- the page (make demo-html) ---------------------------------------------
+
+
+def run_page(page_path: Path, lab: FakeLab | None = None, **flags: bool) -> tuple[int, str, str]:
+    """A full run saves the Phase 2 result, then the page run shows it."""
+    run_demo(FakeLab())
+    rc, text = run_demo(lab or FakeLab(), at=QUICK_AT, as_page=True, **flags)
+    return rc, text, page_path.read_text()
+
+
+def test_page_path_is_in_lab_demo() -> None:
+    assert REAL_PAGE == LAB / "demo" / "index.html"
+
+
+def test_page_run_writes_only_the_page(saved_result: Path, page_path: Path) -> None:
+    run_demo(FakeLab())
+    repo_before, demo_before = repo_state(), repo_state(saved_result.parent)
+    rc, text = run_demo(FakeLab(), at=QUICK_AT, as_page=True)
+    assert rc == 0, text
+    assert differences(repo_before, repo_state()) == []
+    # The page, renamed into place: no partial file, and the saved result as it was.
+    assert changed_keys(demo_before, repo_state(saved_result.parent)) == {"index.html"}
+    assert page_path.parent == saved_result.parent
+
+
+def test_page_shows_the_same_data_as_quick_mode() -> None:
+    run_demo(FakeLab())
+    _, quick = run_demo(FakeLab(), at=QUICK_AT, quick=True)
+    lab = FakeLab()
+    _, page = run_demo(lab, at=QUICK_AT, as_page=True)
+    assert page.splitlines()[:-1] == quick.splitlines()
+    assert page.splitlines()[-1].startswith("Wrote ")
+    # No suite run, and no `open` unless asked.
+    assert [argv[0] for argv, _ in lab.calls if argv[0] not in ("multipass", "ssh")] == []
+
+
+def test_page_is_opened_only_after_it_is_written(page_path: Path) -> None:
+    lab = FakeLab()
+    run_page(page_path, lab, open_page=True)
+    assert lab.calls[-1][0] == ["open", str(page_path)]
+    assert [argv for argv, _ in lab.calls if argv[0] == "open"] == [["open", str(page_path)]]
+
+
+def test_page_failing_to_open_is_reported(page_path: Path) -> None:
+    lab = FakeLab()
+    original = lab.__call__
+
+    def no_open(argv, env):
+        if argv[0] == "open":
+            raise FileNotFoundError("open")
+        return original(argv, env)
+
+    rc, text, _ = run_page(page_path, no_open, open_page=True)
+    assert rc == 0
+    assert text.splitlines()[-1].startswith("Could not run `open`")
+
+
+def test_page_loads_nothing_and_has_light_and_dark_themes(page_path: Path) -> None:
+    _, _, page = run_page(page_path)
+    assert page.startswith("<!doctype html>")
+    assert '<meta charset="utf-8">' in page
+    # Nothing that fetches: no scripts, links, images, frames, imports or URLs.
+    for pattern in (r"<script", r"<link", r"<img", r"<iframe", r"@import", r"url\(", r"//",
+                    r"\bsrc=", r"\bhref="):  # fmt: skip
+        assert not re.search(pattern, page, re.I), pattern
+    assert "@media (prefers-color-scheme: dark)" in page
+    assert "color-scheme: light dark;" in page
+
+
+def test_page_shows_when_the_data_was_collected(page_path: Path) -> None:
+    _, _, page = run_page(page_path)
+    assert f"<dt>Live values read (UTC)</dt><dd>{QUICK_AT}</dd>" in page
+    assert f"<dt>Phase 2 checks saved (UTC)</dt><dd>{FULL_AT}</dd>" in page
+    assert f"Saved {FULL_AT} by the last full <code>make demo</code>." in page
+
+
+def test_page_marks_the_interim_lynis_index_as_interim(page_path: Path) -> None:
+    _, _, page = run_page(page_path)
+    data = json.loads((ROOT / "results" / "lynis-interim-p2.json").read_text())
+    row = re.search(r'<dt>interim-p2 <span class="badge">interim</span></dt><dd>([^<]*)</dd>', page)
+    assert row, page
+    assert row.group(1).split()[0] == str(data["hardening_index"])
+    assert (
+        '<dd class="note">interim: not comparable to the final after-audit'
+        " until P7.0a to P7.0c are done</dd>"
+    ) in page
+    assert "<dt>before</dt>" in page  # the baseline gets no badge
+
+
+def test_page_escapes_what_the_lab_returns(page_path: Path) -> None:
+    sshd = "passwordauthentication <b>no</b>\npermitrootlogin no\nkbdinteractiveauthentication no\n"
+    _, _, page = run_page(page_path, FakeLab(node={"sudo -n sshd -T": sshd}))
+    assert "passwordauthentication &lt;b&gt;no&lt;/b&gt;" in page
+    assert "<b>" not in page
+
+
+def test_page_shows_command_spans_as_code(page_path: Path) -> None:
+    _, _, page = run_page(page_path)
+    assert "change VM state left out, <code>pytest -m lab</code> runs them</span>" in page
+    assert "`" not in page
+
+
+def test_page_shows_failures_in_red(saved_result: Path, page_path: Path) -> None:
+    run_demo(FakeLab(pytest_out="1 failed, 226 passed, 17 deselected in 90.00s", pytest_rc=1))
+    lab = FakeLab()
+    lab.node = {}
+    rc, _ = run_demo(lab, at=QUICK_AT, as_page=True)
+    page = page_path.read_text()
+    assert rc == 1
+    assert '<span class="pill fail">Something failed or could not be read' in page
+    assert '<dt class="error">sshd -T</dt><dd class="error">ERROR: could not read</dd>' in page
+    assert '<span class="pill fail">FAIL</span> <span>1 failed, 226 passed;' in page
+
+
+def test_page_without_a_saved_result_says_so(page_path: Path) -> None:
+    rc, _ = run_demo(FakeLab(), as_page=True)
+    page = page_path.read_text()
+    assert rc == 1
+    assert (
+        '<span class="pill fail">no saved result; run <code>make demo</code> once without'
+        " QUICK=1</span>"
+    ) in page
+    assert "<dt>Phase 2 checks saved (UTC)</dt><dd>no saved result</dd>" in page
+
+
+def test_page_that_cannot_be_written_is_an_error(page_path: Path) -> None:
+    page_path.mkdir(parents=True)  # a directory where the page should go
+    rc, text = run_demo(FakeLab(), as_page=True)
+    assert rc == 1
+    assert text.splitlines()[-1].startswith("Could not write the page: ")
 
 
 def test_ssh_writes_nothing_on_the_controller() -> None:
@@ -410,7 +569,7 @@ def vm_state(name: str) -> list[str]:
 
 
 @pytest.mark.lab
-def test_make_demo_changes_nothing_but_its_saved_result() -> None:
+def test_demo_runs_change_nothing_but_their_own_files_in_lab_demo() -> None:
     lab_hosts.hosts("node")  # skips without inventory/lab.yml
     names = [
         name
@@ -419,33 +578,35 @@ def test_make_demo_changes_nothing_but_its_saved_result() -> None:
     ]
     saved = str(REAL_SAVED.relative_to(ROOT))
     saved_dir = str(REAL_SAVED.parent.relative_to(ROOT))
-    # The full run first: QUICK=1 shows the result it saves.
-    for args, must_change, may_change in (
-        ((), {saved}, {saved, saved_dir}),
-        (("QUICK=1",), set(), set()),
-    ):
+    page = str(REAL_PAGE.relative_to(ROOT))
+    make_demo = ["make", "--no-print-directory", "demo"]
+    # The full run first: QUICK=1 and the page show the result it saves. The
+    # page run is the script without --open, as `make demo-html` would open a
+    # browser.
+    steps = (
+        (make_demo, {saved}, {saved, saved_dir}, "saved for QUICK=1 in .lab/demo/phase2.json"),
+        ([*make_demo, "QUICK=1"], set(), set(), "QUICK=1 did not rerun them"),
+        (
+            [str(ROOT / ".venv" / "bin" / "python"), "-B", "scripts/demo.py", "--html"],
+            {page}, {page, saved_dir}, "Wrote .lab/demo/index.html",
+        ),
+    )  # fmt: skip
+    for argv, must_change, may_change, says in steps:
         repo_before = repo_state()
-        if args == () and saved_dir not in repo_before:
+        if saved_dir not in repo_before:
             # Making .lab/demo changes .lab's own mtime, once. Any other new
             # entry in .lab still shows as its own key.
             may_change = may_change | {".lab"}
         vms_before = {name: vm_state(name) for name in names}
         result = subprocess.run(
-            ["make", "--no-print-directory", "demo", *args],
-            cwd=ROOT, capture_output=True, text=True, check=False, timeout=900,
-        )  # fmt: skip
+            argv, cwd=ROOT, capture_output=True, text=True, check=False, timeout=900
+        )
         vms_after = {name: vm_state(name) for name in names}
-        repo_after = repo_state()
+        changed = changed_keys(repo_before, repo_state())
         assert result.returncode == 0, result.stdout + result.stderr
-        assert "Phase 2 checks: PASS" in result.stdout
-        changed = {
-            key
-            for key in set(repo_before) | set(repo_after)
-            if repo_before.get(key) != repo_after.get(key)
-        }
-        assert must_change <= changed <= may_change, (args, sorted(changed))
+        assert "Phase 2 checks: PASS" in result.stdout and says in result.stdout, result.stdout
+        assert must_change <= changed <= may_change, (argv, sorted(changed))
         for name in names:
             gone = sorted(set(vms_before[name]) - set(vms_after[name]))
             new = sorted(set(vms_after[name]) - set(vms_before[name]))
-            assert (gone, new) == ([], []), (args, name)
-    assert "QUICK=1 did not rerun them" in result.stdout
+            assert (gone, new) == ([], []), (argv, name)
