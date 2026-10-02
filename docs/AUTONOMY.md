@@ -10,18 +10,29 @@ One TODO task per cycle.
 2. Verify it:
    - the task's own check from `docs/FEATURES.md`;
    - `make lint` and `make test`;
-   - for roles, also idempotency (a rerun reports `changed=0`), testinfra against the lab, and `make reboot` followed by a recheck of the live values. Boot-time units have undone settings before, so a check that passed only before a reboot does not count.
+   - for roles, also the touched role's lab suite (`pytest -m lab tests/test_<role>.py`) and idempotency (a rerun reports `changed=0`);
+   - `make reboot` and a recheck of the live values, only for roles that set boot-time state (sysctl, mounts, units, the firewall table, audit rules). Boot-time units have undone settings before, so for those roles a check that passed only before a reboot does not count.
 3. Tick the box in `TODO.md`.
 4. Commit, with the verification commands and their results in the commit body.
-5. Push.
+5. Push. Do not wait for CI; the phase end checks it.
 6. Add one line to `docs/PROGRESS.md`.
 
 ## Phase end
 
-1. Run `/verify-phase`.
-2. Run the `security-reviewer` subagent.
-3. Fix the must-fix items.
-4. Update the status line in `README.md`.
+1. Run all lab suites.
+2. Reboot all VMs once (`make reboot`), then run all lab suites again.
+3. Run `/verify-phase`.
+4. Run the `security-reviewer` subagent.
+5. Fix the must-fix items.
+6. Confirm CI passed for every commit in the phase (`gh run list`). A red run is a failing check.
+7. Update the status line in `README.md`.
+
+## Pre-approved
+
+These need no stop. Record each one in `docs/PROGRESS.md`.
+
+- Moving a scenario-based part of an acceptance check to its Phase 6 task, as was done for F-24, F-26 and F-27. Say so in `docs/FEATURES.md` and `TODO.md`.
+- Fixing a bug found on the way, as long as a test covers the fix.
 
 ## Snapshots
 
@@ -29,17 +40,17 @@ Take a Multipass snapshot (`scripts/lab.sh snapshot pre-<task>`) before every ta
 
 ## Session length
 
-Both stray deletes happened late in very long sessions. So a session does at most 3 TODO tasks. Then it writes the HANDOFF and stops, and the owner starts a fresh session. It stops earlier if the context is past half full. The owner can check that with `/context`. Claude cannot run that command itself, so it judges from the session's length and says so when it stops. Work that is not a TODO task (a fix the owner asks for, a review) counts toward the length, not toward the 3.
+Both stray deletes happened late in very long sessions. So a session does at most 5 TODO tasks. Then it writes the HANDOFF and stops, and the owner starts a fresh session. It stops earlier if the context is past half full. The owner can check that with `/context`. Claude cannot run that command itself, so it judges from the session's length and says so when it stops. Work that is not a TODO task (a fix the owner asks for, a review) counts toward the length, not toward the 5.
 
 ## Stop and wait for the owner when
 
-- something needs the owner: an install, a sudo password, or a GitHub setting;
 - a check fails twice;
-- a must-fix item cannot be resolved;
-- a change would weaken a rule in CLAUDE.md section 3;
+- something needs the owner: an install, a sudo password, a GitHub setting, or a must-fix item that cannot be resolved;
 - an action is on the ask list in `.claude/settings.json`;
+- a change would touch a rule in CLAUDE.md section 3, in any direction;
 - anything targets an IP outside `inventory/lab.yml`;
-- the session has finished 3 TODO tasks, or the context is past half full, whichever comes first (see "Session length"). Write the HANDOFF section at the top of `docs/PROGRESS.md` first.
+- auto mode's safety check blocks a call;
+- the session has finished 5 TODO tasks, or the context is past half full, whichever comes first (see "Session length"). Write the HANDOFF section at the top of `docs/PROGRESS.md` first.
 
 ## Deleting files
 
@@ -55,7 +66,7 @@ Both stray deletes happened late in very long sessions. So a session does at mos
 Both stray deletes were extra pieces added to a call that was doing something else. These rules make that harder to do and easier to spot.
 
 - One purpose per Bash call. No trailing cleanup after other commands; cleanup is its own call, or part of a fixed script.
-- Search code with the built-in Grep tool, not `grep` in Bash. The delete guard reads every Bash command's text, so a `grep` for a delete word (as in a review of the hook itself) is blocked; the Grep tool is not a Bash call. Some sessions have no Grep tool (the one on 2026-10-01 did not); then read the file with the Read tool, which the guard does not see either, instead of falling back to Bash `grep`.
+- Read-only `grep` and `git grep` in Bash are fine when the command text names no delete word. The delete guard reads every Bash command's text, so a search for a delete word (as in a review of the hook itself) is blocked. For those, use the built-in Grep tool if the session has one, or read the file with the Read tool. The guard sees neither.
 - Do not hide errors with `2>/dev/null` unless the command needs it, and then say why in the call's description. A hidden error is how a mistake goes unnoticed.
 - Any temp work on a VM goes through a fixed script in the repo that runs on the VM. It makes its temp directory with `mktemp -d` and removes it with a `trap` on exit, on the VM side. No ad-hoc temp files over `ssh`, and no cleanup typed by hand afterwards.
 
@@ -65,7 +76,7 @@ Both stray deletes were extra pieces added to a call that was doing something el
 
 ## Never
 
-- push with failing checks;
+- push with failing local checks (lint, unit tests, the task's lab checks);
 - tick a box that is not verified;
 - write a number that does not come from `results/`;
 - force-push.

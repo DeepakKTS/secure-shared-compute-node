@@ -148,13 +148,18 @@ def test_claude_permissions_guard_destructive_actions() -> None:
         assert rule in perms["deny"], f"{rule} must be denied"
     assert "Bash(ssh:*)" not in perms["allow"], "ssh to any host breaks rule 1 (lab only)"
     # python3 -c could drive a pty past the lab-down prompt, or run ssh and
-    # multipass directly, skipping the ask list. The user removed it.
+    # multipass directly, skipping the ask list. The user removed it. Since
+    # 2026-10-01 the owner allows `Bash(.venv/bin/*)` and `Bash(uv:*)`, which
+    # let `.venv/bin/python -c` and `uv run` do the same. The guard hook still
+    # blocks deletes written as code; this check covers only the system python3.
     assert "Bash(python3:*)" not in perms["allow"], "python3 must not be auto-allowed"
     for rule in (
         "Bash(make lab-down:*)",
         "Bash(multipass delete:*)",
         "Bash(multipass purge:*)",
         "Bash(multipass restore:*)",
+        "Bash(git reset:*)",
+        "Bash(git rebase:*)",
         # Recursive deletes on the host ask first (docs/AUTONOMY.md). Rules
         # match the command text as written: `rm -R:*` means `rm -R *`, so
         # it misses `rm -Rf x`, and `bash -c 'rm -r x'` escapes all of them.
@@ -169,6 +174,16 @@ def test_claude_permissions_guard_destructive_actions() -> None:
         "Bash(find * -delete*)",
     ):
         assert rule in perms["ask"], f"{rule} must ask first"
+
+
+def test_claude_ssh_allow_rules_name_only_lab_hosts() -> None:
+    # Rule 1 (lab only): an auto-allowed ssh must go through the generated
+    # .lab/ssh_config to one of the three lab VMs, never a bare host.
+    perms = json.loads((ROOT / ".claude" / "settings.json").read_text())["permissions"]
+    vms = ("ssc-node", "ssc-monitor", "ssc-attacker")
+    lab = {f"Bash(ssh -F .lab/ssh_config {vm}:*)" for vm in vms}
+    ssh_rules = {rule for rule in perms["allow"] if rule.startswith("Bash(ssh")}
+    assert ssh_rules <= lab, f"ssh allow rules outside the lab: {sorted(ssh_rules - lab)}"
 
 
 def test_claude_permission_rules_use_supported_wildcards() -> None:
