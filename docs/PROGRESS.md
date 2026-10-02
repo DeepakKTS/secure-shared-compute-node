@@ -1,15 +1,27 @@
 # Progress
 
-## HANDOFF (2026-10-01, after P2.7 and the safety work, commit fe1bf78)
+## HANDOFF (2026-10-01, P2.8 in progress, last commit ff694e9)
 
-The session stopped here under the session-length rule. It had already done 3 TODO tasks (P2.5 to P2.7) and was very long, so P2.8 was not started. Start the next session here: read CLAUDE.md, docs/AUTONOMY.md, this section, then TODO.md. A session does at most 3 TODO tasks (docs/AUTONOMY.md, "Session length"): P2.8 to P2.10 fit one session; P2.11 and the phase end, the next.
+The session stopped in the middle of P2.8, and not by the session-length rule. Auto mode's safety check started to block actions: first a lab pytest run, then every Bash call, even a local `cat`. Its message said this would last for the rest of the session and that it came from earlier conversation content, not from the action. Read, Edit and Write still worked, so the P2.8 files were written, but nothing of P2.8 has been run: no lint, no unit test, nothing on a VM. Start a fresh session here (or run outside auto mode): read CLAUDE.md, docs/AUTONOMY.md, this section, then TODO.md.
 
-- **State:** current phase 2. Done: P2.0 to P2.7 (base, users, ssh_hardening, firewall ingress, fail2ban, auto_updates, tmp_hardening). The README status line says so, and that P2.8 is in progress. Since P2.7: safety and docs commits, each pushed with lint and tests passing. The last three:
-  - e1eeb51: the hooks run with `/usr/bin/python3`.
-  - df3fa8b: search code with the Grep tool, not Bash `grep`.
-  - fe1bf78: the README status line.
-- **Next:** P2.8 auditd, P2.9 make idempotency, P2.10 monitor, P2.11 make verify, then the phase end (`/verify-phase`, security-reviewer, README status line).
-- **Lab:** ssc-node 192.168.252.2, ssc-monitor .3, ssc-attacker .4, controller .1 on bridge102 (lab_cidr 192.168.252.0/24). Snapshots on all 3 VMs: pre-harden, pre-users, pre-ssh, pre-firewall, pre-fail2ban, pre-tmp. Restoring one needs the user's confirmation. The node now has a 512M tmpfs `/tmp` and `/dev/shm`, both `nosuid,nodev,noexec`. The node's pending security updates were installed in P2.7. `/home/ssc-admin/uu-run.log` on the node is that run's output, kept as evidence.
+- **State:** current phase 2. Done: P2.0 to P2.7. This session, before the block, pushed three commits, each with `make lint` and `make test` passing:
+  - 12f54cc: `make demo`, a read-only summary of the live lab. A new `changes_state` marker is on the 8 Phase 2 tests that change VM state, and the demo leaves them out. `tests/test_demo.py` has unit tests and a lab test (it passed: a real run left the repo and all 3 VMs as they were).
+  - b80f290: label `interim-p2` in audit.yml, parse_lynis.py and the demo.
+  - ff694e9: `results/lynis-interim-p2.json`, an interim audit of the hardened node, run at b80f290 with a clean tree. Interim: not comparable to the final after-audit until P7.0a to P7.0c are done.
+- **P2.8, uncommitted in the working tree (built, not run):**
+  - `roles/auditd/`: defaults, tasks, handlers, meta, `templates/ssc.rules.j2`, `templates/auditd.conf.j2`, README.
+  - `tests/test_auditd.py` (lab) and `tests/test_auditd_rules.py` (unit; renders the template for aarch64 and x86_64 with jinja2).
+  - The auditd row in docs/VERSIONS.md, and this HANDOFF itself (git could not run). Commit the HANDOFF and VERSIONS.md change on their own first, so the P2.8 commit holds only the role, its tests and its wiring.
+  - Not done yet: `auditd` in playbooks/harden.yml, and `tests/test_auditd.py` in `PHASE2_SUITES` in scripts/demo.py. Add both in one change: `tests/test_demo.py` requires the suites to match the harden.yml roles. They were left out on purpose, so `make demo` does not run auditd tests against a node without the role.
+  - None of it has been through ruff, yamllint, ansible-lint or pytest. Expect small fixes.
+- **Next, in order:**
+  1. `make lint` and `make test`; fix what they find in the new files.
+  2. Negative control on the node as it is now: `PATH=.venv/bin:$PATH .venv/bin/pytest -m lab tests/test_auditd.py`. Most tests should fail. `test_auditd_runs_at_boot` and `test_no_rule_file_makes_the_rules_immutable` should pass already.
+  3. Add `auditd` to the node play in playbooks/harden.yml (after tmp_hardening, `tags: [auditd]`) and the suite to `PHASE2_SUITES`. `make harden TAGS=auditd`, then a rerun for changed=0.
+  4. Compare the `auditctl -l` output with the tests: how it prints `-F dir=`, `-S execve,execveat`, `a2&06000` (octal or hex) and directory watches (trailing slash?). Change a test pattern only to match the printed format, never to hide a missing rule.
+  5. `pytest -m lab tests/test_auditd.py`, then `make reboot HOSTS=node`, all Phase 2 suites again, `scripts/lab.sh check`, `make demo`. Then tick P2.8, commit, push, PROGRESS line.
+  Then P2.9 (make idempotency) and P2.10. P2.10 may be mostly verification: harden.yml already runs base, users, ssh_hardening, firewall and fail2ban on node:monitor. P2.11 and the phase end come after.
+- **Lab:** ssc-node 192.168.252.2, ssc-monitor .3, ssc-attacker .4, controller .1 on bridge102 (lab_cidr 192.168.252.0/24). Snapshots on all 3 VMs: pre-harden, pre-users, pre-ssh, pre-firewall, pre-fail2ban, pre-tmp, pre-auditd (this session, after the interim audit). Restoring one needs the user's confirmation. After pre-auditd, auditd 1:3.1.2-2.1ubuntu0.1 was installed on ssc-node with `.venv/bin/ansible ssc-node -b -m ansible.builtin.apt -a "name=auditd state=present update_cache=true cache_valid_time=3600"` (the role's own install task). It runs with the vendor config and no rules (`auditctl -l`: "No rules"). That is the state for the negative control. The node now has a 512M tmpfs `/tmp` and `/dev/shm`, both `nosuid,nodev,noexec`. The node's pending security updates were installed in P2.7. `/home/ssc-admin/uu-run.log` on the node is that run's output, kept as evidence.
 - **Guardrails (docs/AUTONOMY.md, enforced by hooks in `.claude/settings.json`):**
   - **The guard hook** (`.claude/hooks/guard_delete.py`, PreToolUse, fails closed) covers these commands: `rm`, `unlink`, `shred`, `truncate`, find's `-delete`, `git clean`, `rsync` with a delete option, and `mv` onto `/dev/null`. Each must be a plain command whose targets are all in `.lab/` (not `.lab` itself or `.lab/keys`) or build output.
   - **What it always blocks:** deletes written as code (`os.remove`, `shutil.rmtree`, `.unlink()`, `rmtree`). Also any `>` redirect into `.lab/keys` or onto a tracked file.
@@ -28,19 +40,24 @@ The session stopped here under the session-length rule. It had already done 3 TO
   4. `make harden TAGS=<role>`; stop at once if any host is unreachable, and tell the user before restoring.
   5. New admin login (`-o ControlPath=none`), `scripts/lab.sh check`, alice key login; rerun for changed=0; `pytest -m lab tests/test_<role>.py` with `PATH=.venv/bin:$PATH`.
   6. `make reboot HOSTS=<group>`, then rerun all lab suites and `lab.sh check` (boot-time units have undone settings twice).
-- **P2.8 notes (auditd, node only):**
-  - Rules go in `/etc/audit/rules.d/*.rules`, loaded by `augenrules --load`.
-  - Tag every rule `-k ssc_<purpose>`.
-  - Never `-e 2` (it makes rule changes need a reboot). Keep failure mode `-f 1`; `-f 2` panics the kernel on audit failure.
-  - Render per-user watches (`~/.config/systemd`, shell rc files) from `users_research`, and create the directories first: auditd does not expand `~`, and a watch needs its parent to exist.
-  - Log failed exec attempts on the noexec `/tmp` and `/dev/shm`. An exec there now fails with EACCES, and that failed attempt is the evidence S2 needs. So the execve rules for temp paths (`/tmp`, `/dev/shm`, `/var/tmp`) must not filter on `success=1`, and they need their own key (for example `-k ssc_exec_tmp`). A testinfra test should run a binary from `/tmp` as alice, see it refused, and find the failed record with `ausearch -k ssc_exec_tmp --success no`.
-  - Take a snapshot anyway; it is cheap.
+- **P2.8 as built (reasons in roles/auditd/README.md; checked on the node before the block):**
+  - Vendor facts: the unit has no `RefuseManualStop` (a restart handler works) and loads rules with `ExecStartPost=-/sbin/augenrules --load`, whose leading `-` hides a failed load. The vendor `rules.d/audit.rules` sets `-D`, `-b 8192`, `--backlog_wait_time 60000`, `-f 1`. augenrules reads `rules.d` in `ls -v` order (any `NN-*.rules` sorts before `audit.rules`) and keeps only the last `-b`, `-f`, `-e`.
+  - So the role writes one file, `/etc/audit/rules.d/ssc.rules`, which sorts last. It sets `-b 8192`, `-f 1`, `-e 1` (never `-e 2`).
+  - `ssc_exec_tmp`: `-a always,exit -F arch=<abi> -S execve,execveat -F dir=<path>` for `/tmp`, `/dev/shm`, `/var/tmp`, no success filter. The test runs a binary from `/tmp` and `/dev/shm` as alice, sees rc 126, and finds the record with `ausearch -k ssc_exec_tmp --success no` (exit=-13, alice's uid).
+  - `ssc_suid`: chmod-family calls with `-F a1&06000` or `-F a2&06000`. `ausyscall --exact` on the node: aarch64 has no `chmod` (fchmod 52, fchmodat 53); `fchmodat2` is unknown by name on aarch64, x86_64 and i386, so the rule uses 452.
+  - x86_64 gets both `b64` and `b32` (`auditd_syscall_arches`); the arm64 lab has `b64` only and cannot show `b32` (README section on architectures).
+  - Watches: cron paths (`ssc_cron`), `/etc/systemd/system` and `/etc/systemd/user` (`ssc_systemd`), sudoers (`ssc_sudoers`), and for each research user `~/.config/systemd`, `~/.ssh` and five rc files (`ssc_user_persist`). The role creates the user directories first. `/etc/systemd/user` and `~/.ssh` go beyond the F-27 list; the security review can say whether to keep them.
+  - auditd.conf: 50 MB x 8 logs; `space_left` 25% SYSLOG; `admin_space_left` 10% ROTATE; `disk_full_action` ROTATE; `disk_error_action` SYSLOG. Never SINGLE or HALT, because a user who fills the disk would take the node down. This departs from CIS Level 2 on purpose (README). The man page on the node lists `rotate` as valid for all three space actions, and `%` for `space_left` and `admin_space_left`.
+  - The role compares the number of loaded `ssc_` rules with the rule lines in the file, loads again if they differ, and fails if they still differ.
+  - Open: how unattended-upgrades handles an auditd update that changes the auditd.conf conffile (README says it has not been seen).
 - **Decisions this session:** F-24's "S1 passes" part moved to P6.4, and F-26's "S2 passes" part to P6.5 (both approved). c55d7f1 stays as it is (approved, no history rewrite). The guard hook keeps `.lab` itself and `.lab/keys` blocked, which is stricter than the request.
 - **Known issues:**
   - `git push` sometimes waits on a macOS keychain prompt (`git credential-osxkeychain get`). The user unlocks it; `gh auth setup-git` would avoid it (the user's decision).
   - c55d7f1 also added `tests/test_tmp_hardening.py` in full, although its message calls that change a format fix. Left as is (owner's decision).
   - The hooks run with `/usr/bin/python3` (3.9.6 on this Mac, from the Xcode command line tools; 3.12 on the Ubuntu CI runner). If it breaks (for example the command line tools are removed), the guard blocks every Bash call (fail closed). Fix it with the Edit tool on `.claude/settings.json`, which the guard does not see.
-  - This session's harness had no Grep tool. To search code, use the Read tool, not Bash `grep` (docs/AUTONOMY.md, "Bash calls"); a later session may have Grep.
+  - This session's harness had no Grep tool. To search code, use the Read tool, not Bash `grep` (docs/AUTONOMY.md, "Bash calls"); a later session may have Grep. The P2.8 session broke this rule once: a Bash `grep` over testinfra's `ansible_runner.py` in `.venv/`, to see which SSH options testinfra uses (no delete word; it ran). It also ran `grep` inside SSH commands on the node to read the Lynis log and the auditd man page.
+  - Auto mode block (P2.8 session): late in the session, auto mode's safety check blocked a lab pytest run, then every Bash call. It said it reacts to earlier conversation content and would keep firing for the rest of the session. A fresh session, or the default permission mode, is the way past it. `make audit-log ALL=1` shows what ran before it.
+  - `make demo` takes about 1 minute 45 seconds, almost all of it the Phase 2 checks.
 - **Open review items, not yet done:** P7.0a to P7.0c (TODO). From the second Phase 0 review: `gen_inventory.py --multipass-json` is accepted on the production path (item 4); `lab.sh forget_host_key` still uses `ipv4[0]`; on a Linux host with multipass in /usr/bin the lab.sh tests could reach the real binary.
 
 One line per task: date, task ID, commit, what was verified. "built, not verified" means the box stays unticked.
